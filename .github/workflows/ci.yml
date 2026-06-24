@@ -24,4 +24,11 @@ jobs:
           cd /tmp/kaappi && zig build
 
       - name: Run tests
-        run: /tmp/kaappi/zig-out/bin/kaappi --lib-path lib tests/test-cli.scm
+        run: /tmp/kaappi/zig-out/bin/kaappi --coverage-xml coverage.xml --lib-path lib tests/test-cli.scm
+
+      - name: Upload to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
