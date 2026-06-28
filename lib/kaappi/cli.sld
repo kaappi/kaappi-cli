@@ -228,20 +228,20 @@
     ;; =================================================================
 
     (define (generate-help app . args)
-      (let* ((cmd-name (if (pair? args) (car args) #f))
+      (let* ((sub-name (if (pair? args) (car args) #f))
              (name (cli-name app))
-             (specs (if cmd-name
+             (specs (if sub-name
                         (let ((c (find-command
                                    (filter (lambda (s) (eq? (spec-type s) 'command))
                                            (cli-specs app))
-                                   cmd-name)))
+                                   sub-name)))
                           (if c (cmd-specs c) (cli-specs app)))
                         (cli-specs app)))
-             (desc (if cmd-name
+             (desc (if sub-name
                        (let ((c (find-command
                                   (filter (lambda (s) (eq? (spec-type s) 'command))
                                           (cli-specs app))
-                                  cmd-name)))
+                                  sub-name)))
                          (if c (cmd-desc c) (cli-desc app)))
                        (cli-desc app)))
              (opts (filter (lambda (s) (or (eq? (spec-type s) 'option)
@@ -250,11 +250,11 @@
              (cmds (filter (lambda (s) (eq? (spec-type s) 'command)) specs)))
 
         (display name)
-        (when cmd-name (display " ") (display cmd-name))
+        (when sub-name (display " ") (display sub-name))
         (display " — ") (display desc) (newline) (newline)
 
         (display "Usage: ") (display name)
-        (when cmd-name (display " ") (display cmd-name))
+        (when sub-name (display " ") (display sub-name))
         (unless (null? opts) (display " [options]"))
         (unless (null? cmds) (display " <command>"))
         (for-each (lambda (a) (display " <") (display (arg-name a)) (display ">"))
