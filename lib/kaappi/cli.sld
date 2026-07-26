@@ -309,12 +309,18 @@
     (define (run-cli-parse app argv)
       (parse-args (cli-specs app) argv))
 
-    (define (run-cli app handlers)
-      (let* ((argv (cdr (command-line)))
+    ;; (run-cli app handlers)      — parse (command-line), dispatch
+    ;; (run-cli app handlers argv) — parse explicit argv (for testing)
+    (define (run-cli app handlers . rest)
+      (let* ((argv (if (pair? rest) (car rest) (cdr (command-line))))
              (result (parse-args (cli-specs app) argv)))
         (cond
           ((parsed-ref result "help")
            (generate-help app))
+          ((and (parsed-command result)
+                (parsed-sub result)
+                (parsed-ref (parsed-sub result) "help"))
+           (generate-help app (parsed-command result)))
           ((parsed-command result)
            (let ((h (assoc (parsed-command result) handlers)))
              (if h ((cdr h) result)

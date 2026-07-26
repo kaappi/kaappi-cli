@@ -23,6 +23,37 @@
     (command "build" "Build the project"
       (option "-j" "--jobs" "Parallel jobs" 4))))
 
+(define (capture-output thunk)
+  (let ((port (open-output-string)))
+    (parameterize ((current-output-port port))
+      (thunk))
+    (get-output-string port)))
+
+(define (string-contains? s sub)
+  (let ((sl (string-length s)) (subl (string-length sub)))
+    (let loop ((i 0))
+      (cond ((> (+ i subl) sl) #f)
+            ((string=? (substring s i (+ i subl)) sub) #t)
+            (else (loop (+ i 1)))))))
+
+(define last-call #f)
+
+(define test-handlers
+  `(("init" . ,(lambda (r)
+                 ;; car of the sub-parse's positional args — the access
+                 ;; pattern that crashed on `myapp init --help` before
+                 ;; per-subcommand help was routed around the handlers
+                 (set! last-call
+                   (cons "init" (cdr (car (parsed-args (parsed-sub r))))))))
+    ("build" . ,(lambda (r)
+                  (set! last-call
+                    (cons "build" (parsed-ref (parsed-sub r) "jobs")))))
+    (#f . ,(lambda (r) (set! last-call 'default)))))
+
+(define (dispatch argv)
+  (set! last-call #f)
+  (capture-output (lambda () (run-cli app test-handlers argv))))
+
 ;; --- Options ---
 (display "=== Options ===") (newline)
 
@@ -87,6 +118,53 @@
 
 (let ((r (run-cli-parse app '("-h"))))
   (check "help short" #t (parsed-ref r "help")))
+
+;; --- Subcommand help ---
+(display "=== Subcommand Help ===") (newline)
+
+(let ((r (run-cli-parse app '("build" "--help"))))
+  (check "sub help flag in sub parse" #t
+    (let ((sub (parsed-sub r)))
+      (if sub (parsed-ref sub "help") #f))))
+
+(let ((r (run-cli-parse app '("init" "-h"))))
+  (check "sub help short in sub parse" #t
+    (let ((sub (parsed-sub r)))
+      (if sub (parsed-ref sub "help") #f))))
+
+(let ((out (dispatch '("build" "--help"))))
+  (check "build --help skips handler" #f last-call)
+  (check "build --help prints sub help" #t
+    (string-contains? out "myapp build — Build the project"))
+  (check "build --help prints sub usage" #t
+    (string-contains? out "Usage: myapp build")))
+
+(let ((out (dispatch '("init" "--help"))))
+  (check "init --help skips handler" #f last-call)
+  (check "init --help prints sub help" #t
+    (string-contains? out "myapp init — Initialize a project")))
+
+(let ((out (dispatch '("build" "-h"))))
+  (check "build -h skips handler" #f last-call)
+  (check "build -h prints sub usage" #t
+    (string-contains? out "Usage: myapp build")))
+
+(let ((out (dispatch '("--help"))))
+  (check "top-level --help skips handlers" #f last-call)
+  (check "top-level --help prints app help" #t
+    (string-contains? out "myapp — A test application")))
+
+(begin
+  (dispatch '("init" "proj"))
+  (check "init handler still runs" '("init" . "proj") last-call))
+
+(begin
+  (dispatch '("build" "-j" "2"))
+  (check "build handler still runs" '("build" . 2) last-call))
+
+(begin
+  (dispatch '("input.txt"))
+  (check "default handler still runs" 'default last-call))
 
 ;; --- Generated help output ---
 (display "=== Help Output ===") (newline)
