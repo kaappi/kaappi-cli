@@ -70,6 +70,7 @@ Arguments:
 
 ```scheme
 (run-cli app handlers)         ; parse command-line, dispatch to handler
+(run-cli app handlers argv)    ; same, but parse an explicit argv list
 (run-cli-parse app argv)       ; parse explicit argv list (for testing)
 ```
 
@@ -90,7 +91,9 @@ Arguments:
 (generate-help app "build")    ; print help for subcommand
 ```
 
-`--help` and `-h` are handled automatically.
+`--help` and `-h` are handled automatically, at the top level and after a
+subcommand: `mytool --help` prints the app help, `mytool build --help`
+prints help for the `build` subcommand.
 
 ## Subcommands
 
@@ -110,6 +113,19 @@ Arguments:
                   (let ((jobs (parsed-ref (parsed-sub r) "jobs")))
                     (display "Building with ") (display jobs)
                     (display " jobs") (newline))))))
+```
+
+Each subcommand gets its own help page:
+
+```
+$ kaappi mytool.scm build --help
+mytool build — Build
+
+Usage: mytool build [options]
+
+Options:
+  -j, --jobs <value>        Parallel jobs (default: 4)
+  -h, --help                Show this help
 ```
 
 ## Type Coercion

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- `--help`/`-h` after a subcommand now prints that subcommand's help instead
+  of invoking its handler with empty parsed arguments and crashing
+
+### Added
+- `run-cli` accepts an optional explicit argv list,
+  e.g. `(run-cli app handlers '("build" "--help"))`
+
 ## [0.1.0] - 2026-06-23
 
 ### Added
