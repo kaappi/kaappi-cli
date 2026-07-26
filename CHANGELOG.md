@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-26
+
 ### Fixed
 - `--help`/`-h` after a subcommand now prints that subcommand's help instead
   of invoking its handler with empty parsed arguments and crashing
