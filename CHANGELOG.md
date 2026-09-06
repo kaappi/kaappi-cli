@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- `--flag=value` (e.g. `--verbose=true`) no longer crashes the parser;
+  the value part is ignored and the flag is set to `#t`
+- Option values no longer consume option-shaped tokens: `-n -v` now sets
+  the `verbose` flag instead of making `count` the string `"-v"`, and the
+  same guard applies to `--help` and `--`. Negative numbers (`-5`) and a
+  lone `-` are still accepted as values. A missing value at end of argv
+  still keeps the option default (error reporting is tracked separately
+  in #4/#5)
+- Documented numeric coercion in the README: a non-numeric value for a
+  numeric option keeps the raw string (`--count=abc` → `"abc"`), and
+  full Scheme number syntax is accepted (`1e3`, `1/2`, `#x10`)
 - The greeter example's `farewell` subcommand printed `Goodbye, #f!` when no
   name was given
 
