@@ -1,0 +1,57 @@
+{
+  "skill_name": "pr-groups",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Group the issues labelled audit into sets I can each land as a single PR.",
+      "expected_output": "Cohesive groups with files named, a merge order, and a parallelism verdict. #2 and #7 must be one group (adjacent arms of parse-args's cond sharing the value-consumption logic). #9 and #15 must be one group (both in the help generation section). #12 must be its own mechanical group (spans tests, example, and library imports). #13 must be identified as zero-risk/parallel-safe (examples-only). #4 and #5 must be marked design-first (error-handling strictness is a policy decision) and ordered last. #16 must be dropped as a tracking issue. The response must note that library groups serialize because everything lives in lib/kaappi/cli.sld.",
+      "files": [],
+      "expectations": [
+        "#2 and #7 appear in the same group, justified by both being value-handling arms of the same cond in lib/kaappi/cli.sld",
+        "#9 and #15 appear in the same group, justified by both living in the help generation section of lib/kaappi/cli.sld",
+        "#12 is its own group, noted as spanning tests/test-cli.scm, examples/greeter.scm, and lib/kaappi/cli.sld imports",
+        "#13 is identified as examples-only, zero-risk, and parallel-safe",
+        "#4 and #5 are ordered last and marked design-first",
+        "#16 is dropped from the groups as a tracking issue, without closing it",
+        "Every group names the files it touches",
+        "The response states that library-touching groups must land sequentially since they all edit lib/kaappi/cli.sld",
+        "An explicit merge order is given, marking which groups can run in parallel"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Batch the open issues in milestone 9.9.9 into PRs.",
+      "expected_output": "A statement that no open issues carry that milestone, and no groups — must not fall back to the whole tracker.",
+      "files": [],
+      "expectations": [
+        "Response states that the milestone matched no open issues",
+        "Response contains no groups",
+        "Response does not fall back to grouping all open issues"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Which of these can I do in one PR: 13, 16? (skill argument: 13,16)",
+      "expected_output": "#13 grouped alone as the zero-risk class (an examples-only fix to examples/greeter.scm), trivially splittable; #16 reported as a tracking/checklist issue and dropped from the groups rather than scheduled.",
+      "files": [],
+      "expectations": [
+        "#13 is placed in a group by itself, justified as an examples-only zero-risk fix",
+        "The response names examples/greeter.scm as the file and the dead \"World\" fallback (guard on sub instead of the argument value) as the cause",
+        "#16 is not placed in any group and is identified as a tracking issue",
+        "The response notes the parallelism implication: an examples-only group can merge in any order relative to library groups"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Can #2 and #5 land together in one PR?",
+      "expected_output": "No — #2 is a surgical crash fix in the --name=value branch, while #5 (unknown options/commands silently ignored) requires a design decision about how strict error handling should be. Grouping them would hold the crash fix hostage to the policy discussion. Expect #2 grouped alone or with other value-handling fixes, and #5 (with #4) marked design-first.",
+      "files": [],
+      "expectations": [
+        "The response does not group #2 and #5 together as-is",
+        "The response identifies the do-not-group rule that fired: a fix needing a design decision with one that doesn't",
+        "#2 is grouped with #7 or alone, anchored to the --name=value branch of parse-args in lib/kaappi/cli.sld",
+        "#5 is marked design-first and ordered last, ideally noted as pairing with #4 (exit codes share the same strictness decision)"
+      ]
+    }
+  ]
+}
