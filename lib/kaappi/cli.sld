@@ -208,14 +208,17 @@
               ((null? vs) (reverse (append (map (lambda (s) (cons (arg-name s) #f)) ss) acc)))
               (else (loop (cdr ss) (cdr vs) (cons (cons (arg-name (car ss)) (car vs)) acc))))))
 
-    ;; A token that starts with "-" but is not a number is another
+    ;; A token that starts with "-" but is not a real number is another
     ;; option/flag, never an option's value. Protects "-v", "--help"
-    ;; and "--"; negative numbers ("-5") and the lone "-" (stdin
-    ;; convention) remain valid values.
+    ;; and "--"; the real? check also rejects number-shaped flags like
+    ;; "-i", which string->number parses as the complex -i. Negative
+    ;; reals ("-5", "-1.5e2") and the lone "-" (stdin convention)
+    ;; remain valid values.
     (define (valid-value? tok)
-      (not (and (> (string-length tok) 1)
-                (char=? (string-ref tok 0) #\-)
-                (not (string->number tok)))))
+      (let ((n (string->number tok)))
+        (not (and (> (string-length tok) 1)
+                  (char=? (string-ref tok 0) #\-)
+                  (not (and n (real? n)))))))
 
     (define (coerce s default)
       (if (and default (number? default))

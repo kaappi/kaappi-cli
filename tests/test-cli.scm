@@ -104,6 +104,17 @@
 (let ((r (run-cli-parse app '("-n" "--"))))
   (check "-n does not eat --" 10 (parsed-ref r "count")))
 
+;; A short flag whose letter spells a Scheme number ("-i" parses as the
+;; complex -i) must not be consumed as a value either
+(define iapp
+  (cli "iapp" "I"
+    (flag "-i" "--interactive" "Interactive")
+    (option "-n" "--count" "Number" 10)))
+
+(let ((r (run-cli-parse iapp '("-n" "-i"))))
+  (check "-n does not eat number-shaped flag -i" 10 (parsed-ref r "count"))
+  (check "-n -i sets interactive" #t (parsed-flag? r "interactive")))
+
 ;; Negative numbers and the lone "-" are still valid values
 (let ((r (run-cli-parse app '("-n" "-5"))))
   (check "-n takes negative number" -5 (parsed-ref r "count")))
