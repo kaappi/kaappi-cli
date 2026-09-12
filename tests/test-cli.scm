@@ -604,6 +604,15 @@
   "option: -h and --help are reserved for the built-in help"
   (spec-error (lambda () (option "-h" "--host" "Host" "localhost"))))
 
+;; the reservation covers both slots, whichever spelling lands in them
+(check "-h in the long slot is rejected"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "-H" "-h" "H"))))
+
+(check "--help in the short slot is rejected"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "--help" "--helper" "H"))))
+
 (check "a name that merely starts with help is fine" #f
   (spec-error (lambda () (flag "-H" "--helper" "Helper"))))
 

@@ -28,9 +28,10 @@
         (list 'option short long description default)))
 
     ;; -h and --help are handled by the parser and listed on every help
-    ;; page, so a spec cannot claim either name.
+    ;; page, so a spec cannot claim either name, in either slot.
     (define (check-not-help who short long)
-      (when (or (equal? short "-h") (equal? long "--help"))
+      (when (or (member short '("-h" "--help"))
+                (member long '("-h" "--help")))
         (error (string-append (symbol->string who)
                               ": -h and --help are reserved for the built-in help")
                short long)))
@@ -352,6 +353,7 @@
                                          more)))
                                acc))
                        errors))
+                ;; a declared flag, or the built-in help
                 ((or o (string=? short "-h"))
                  (loop (+ i 1) (cons short acc) errors))
                 ((= i 1)
