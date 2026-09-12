@@ -22,9 +22,7 @@
                    (loop (+ i 1)))))))
     ("farewell" . ,(lambda (result)
                      (let* ((sub (parsed-sub result))
-                            (name (if sub
-                                      (cdr (car (parsed-args sub)))
-                                      "World")))
+                            (name (or (cdr (car (parsed-args sub))) "World")))
                        (display "Goodbye, ")
                        (display name)
                        (display "!")
