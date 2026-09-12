@@ -126,7 +126,9 @@
                           (o (find-opt-long options name)))
                      (if o
                          (loop rest (set-opt opts (opt-long-name o)
-                                     (coerce val (opt-default o)))
+                                     (if (is-flag? o)
+                                         #t
+                                         (coerce val (opt-default o))))
                                pos-args found-cmd cmd-argv)
                          (loop rest opts pos-args found-cmd cmd-argv))))
 
@@ -138,7 +140,7 @@
                          (if (is-flag? o)
                              (loop rest (set-opt opts (opt-long-name o) #t)
                                    pos-args found-cmd cmd-argv)
-                             (if (pair? rest)
+                             (if (and (pair? rest) (valid-value? (car rest)))
                                  (loop (cdr rest)
                                        (set-opt opts (opt-long-name o)
                                          (coerce (car rest) (opt-default o)))
@@ -153,7 +155,7 @@
                          (if (is-flag? o)
                              (loop rest (set-opt opts (opt-long-name o) #t)
                                    pos-args found-cmd cmd-argv)
-                             (if (pair? rest)
+                             (if (and (pair? rest) (valid-value? (car rest)))
                                  (loop (cdr rest)
                                        (set-opt opts (opt-long-name o)
                                          (coerce (car rest) (opt-default o)))
@@ -205,6 +207,18 @@
         (cond ((null? ss) (reverse acc))
               ((null? vs) (reverse (append (map (lambda (s) (cons (arg-name s) #f)) ss) acc)))
               (else (loop (cdr ss) (cdr vs) (cons (cons (arg-name (car ss)) (car vs)) acc))))))
+
+    ;; A token that starts with "-" but is not a real number is another
+    ;; option/flag, never an option's value. Protects "-v", "--help"
+    ;; and "--"; the real? check also rejects number-shaped flags like
+    ;; "-i", which string->number parses as the complex -i. Negative
+    ;; reals ("-5", "-1.5e2") and the lone "-" (stdin convention)
+    ;; remain valid values.
+    (define (valid-value? tok)
+      (let ((n (string->number tok)))
+        (not (and (> (string-length tok) 1)
+                  (char=? (string-ref tok 0) #\-)
+                  (not (and n (real? n)))))))
 
     (define (coerce s default)
       (if (and default (number? default))

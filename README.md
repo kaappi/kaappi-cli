@@ -131,9 +131,20 @@ Options:
 ## Type Coercion
 
 Option types are inferred from the default value:
-- Number default (`10`) → value parsed as number
+- Number default (`10`) → value parsed as a number with `string->number`
 - String default (`"out.txt"`) → value kept as string
 - No default → string
+
+If the value does not parse as a number, the raw string is kept as-is
+rather than raising an error: `--count=abc` → `"abc"`. Downstream code
+that expects a number should check the parsed value first.
+
+A flag ignores any `=value` suffix: `--verbose=false` sets the flag to
+`#t` exactly like `--verbose` — the value part is not interpreted.
+
+`string->number` accepts the full Scheme number syntax, so the parsed
+value can differ from the default's type: `--count=1e3` → `1000.0`
+(inexact), `--count=1/2` → the rational `1/2`, `--count=#x10` → `16`.
 
 ## License
 

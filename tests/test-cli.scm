@@ -82,6 +82,57 @@
   (check "multi count" 3 (parsed-ref r "count"))
   (check "multi output" "result.json" (parsed-ref r "output")))
 
+;; Flag with =value: the value part is ignored, the flag is set to #t
+(let ((r (run-cli-parse app '("--verbose=true"))))
+  (check "flag =true sets flag" #t (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("--verbose=false"))))
+  (check "flag =false sets flag" #t (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("--verbose="))))
+  (check "flag =empty sets flag" #t (parsed-flag? r "verbose")))
+
+;; Option values never consume option-shaped tokens
+(let ((r (run-cli-parse app '("-n" "-v"))))
+  (check "-n does not eat -v" 10 (parsed-ref r "count"))
+  (check "-n -v sets verbose" #t (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("-n" "--help"))))
+  (check "-n does not eat --help" #t (parsed-ref r "help"))
+  (check "-n --help keeps count default" 10 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("-n" "--"))))
+  (check "-n does not eat --" 10 (parsed-ref r "count")))
+
+;; A short flag whose letter spells a Scheme number ("-i" parses as the
+;; complex -i) must not be consumed as a value either
+(define iapp
+  (cli "iapp" "I"
+    (flag "-i" "--interactive" "Interactive")
+    (option "-n" "--count" "Number" 10)))
+
+(let ((r (run-cli-parse iapp '("-n" "-i"))))
+  (check "-n does not eat number-shaped flag -i" 10 (parsed-ref r "count"))
+  (check "-n -i sets interactive" #t (parsed-flag? r "interactive")))
+
+;; Negative numbers and the lone "-" are still valid values
+(let ((r (run-cli-parse app '("-n" "-5"))))
+  (check "-n takes negative number" -5 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("-o" "-"))))
+  (check "-o takes lone dash" "-" (parsed-ref r "output")))
+
+;; Coercion pins: non-numeric input keeps the raw string; full Scheme
+;; number syntax is accepted via string->number
+(let ((r (run-cli-parse app '("--count=abc"))))
+  (check "non-numeric value kept as string" "abc" (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("--count=1e3"))))
+  (check "scientific notation coerces" 1000.0 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("--count=1/2"))))
+  (check "rational syntax coerces" 1/2 (parsed-ref r "count")))
+
 ;; --- Arguments ---
 (display "=== Arguments ===") (newline)
 
