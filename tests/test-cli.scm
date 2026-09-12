@@ -283,6 +283,37 @@
   (check "options before an unknown command still parse" #t
     (parsed-flag? r "verbose")))
 
+;; option-shaped tokens after an unknown command are still checked;
+;; bare words are taken as its arguments and skipped
+(let ((r (run-cli-parse capp '("inti" "--bogus"))))
+  (check "unknown option after an unknown command is reported"
+    '("unknown command 'inti'" "unknown option '--bogus'") (parsed-errors r)))
+
+(let ((r (run-cli-parse capp '("inti" "proj" "-v"))))
+  (check "flag after an unknown command still parses" #t
+    (parsed-flag? r "verbose"))
+  (check "bare words after an unknown command are not reported"
+    '("unknown command 'inti'") (parsed-errors r)))
+
+(let ((r (run-cli-parse capp '("inti" "init" "x"))))
+  (check "a real command after an unknown command is not dispatched"
+    #f (parsed-command r)))
+
+(let ((r (run-cli-parse capp '("inti" "--" "-v"))))
+  (check "-- after an unknown command hides the rest" #f
+    (parsed-flag? r "verbose")))
+
+;; a dash-leading token that is neither a declared option nor a number is
+;; an unknown option, no longer positional data (clusters: see #14)
+(let ((r (run-cli-parse app '("-vn"))))
+  (check "dash cluster is an unknown option" '("unknown option '-vn'")
+    (parsed-errors r))
+  (check "dash cluster is not positional data" #f (cdar (parsed-args r))))
+
+(let ((r (run-cli-parse app '("-n5"))))
+  (check "glued short value is an unknown option" '("unknown option '-n5'")
+    (parsed-errors r)))
+
 ;; subcommand errors surface at the top level and in the sub result
 (let ((r (run-cli-parse app '("build" "--bogus"))))
   (check "sub error at top level" '("unknown option '--bogus'") (parsed-errors r))

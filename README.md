@@ -77,7 +77,8 @@ Arguments:
 `handlers` is an alist: one `("name" . proc)` entry per subcommand, a
 `(#f . proc)` entry for invocations without a subcommand, and an optional
 `(error . proc)` entry for usage errors (see [Usage Errors](#usage-errors)).
-Each `proc` receives the parsed result.
+Command keys are strings; the error key is the symbol `error`, not the
+string `"error"`. Each `proc` receives the parsed result.
 
 ### Result Access
 
@@ -153,7 +154,10 @@ The parser reports input it cannot use instead of ignoring it:
 - an option that is not declared: `--bogus`, `-z`
 - an option without a value: `-n` at the end of argv, or `-n -v`
 - a bare word that is not a declared command, when the app has commands
-  but no positional arguments
+  but no positional arguments; later bare words are taken as that
+  command's arguments and not reported, later options still are
+- a dash-leading token that matches no option and is not a number
+  (`-vn`, `-n5`)
 - more positionals than declared
 - no command given, when the app has commands but no `#f` handler
 
@@ -172,8 +176,8 @@ $ echo $?
 `--help` anywhere in argv still prints help and exits 0, even when the
 rest of the invocation has errors.
 
-To report errors yourself, add an `error` entry to the handlers alist. It
-receives the parsed result, `(parsed-errors result)` lists the messages,
+To report errors yourself, add an entry keyed by the symbol `error` to the
+handlers alist. It receives the parsed result, `(parsed-errors result)` lists the messages,
 and `run-cli` returns after calling it instead of exiting:
 
 ```scheme

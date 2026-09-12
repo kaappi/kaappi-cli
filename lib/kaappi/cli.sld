@@ -81,9 +81,11 @@
 
     (define (parsed-sub result) (list-ref result 4))
 
-    ;; Usage errors as a list of strings, in argv order; '() when the
-    ;; parse was clean. A subcommand's errors are included here as well
-    ;; as in the subcommand's own result.
+    ;; Usage errors as a list of strings; '() when the parse was clean.
+    ;; Errors found while scanning come first, in argv order, then
+    ;; surplus positionals, then the subcommand's errors (also kept in
+    ;; the subcommand's own result), then any error run-cli adds. The
+    ;; order is informational, not a contract.
     (define (parsed-errors result) (list-ref result 5))
 
     ;; =================================================================
@@ -95,7 +97,9 @@
             (arguments (filter (lambda (s) (eq? (spec-type s) 'argument)) specs))
             (commands (filter (lambda (s) (eq? (spec-type s) 'command)) specs)))
 
-        ;; pos-args, cmd-argv and errors accumulate in reverse.
+        ;; pos-args, cmd-argv and errors accumulate in reverse. found-cmd
+        ;; is the matched command's spec; bad-cmd is set once a bare word
+        ;; has been reported as an unknown command.
         (let loop ((argv argv)
                    (opts (map (lambda (o)
                                 (cons (opt-long-name o)
@@ -104,23 +108,29 @@
                    (pos-args '())
                    (found-cmd #f)
                    (cmd-argv '())
-                   (errors '()))
+                   (errors '())
+                   (bad-cmd #f))
 
           (if (null? argv)
-              (finish-parse arguments commands opts (reverse pos-args)
+              (finish-parse arguments opts (reverse pos-args)
                             found-cmd (reverse cmd-argv) (reverse errors))
 
               (let ((arg (car argv)) (rest (cdr argv)))
                 (cond
                   ;; "--" ends option parsing: every later token is data.
                   ;; After a command the whole tail, "--" included, is the
-                  ;; subcommand's to parse.
+                  ;; subcommand's to parse; after an unknown command it
+                  ;; would have been that command's data.
                   ((equal? arg "--")
-                   (if found-cmd
-                       (loop '() opts pos-args found-cmd
-                             (append (reverse argv) cmd-argv) errors)
-                       (loop '() opts (append (reverse rest) pos-args)
-                             found-cmd cmd-argv errors)))
+                   (cond
+                     (found-cmd
+                      (loop '() opts pos-args found-cmd
+                            (append (reverse argv) cmd-argv) errors bad-cmd))
+                     (bad-cmd
+                      (loop '() opts pos-args found-cmd cmd-argv errors bad-cmd))
+                     (else
+                      (loop '() opts (append (reverse rest) pos-args)
+                            found-cmd cmd-argv errors bad-cmd))))
 
                   ;; After the command token, tokens belong to the
                   ;; subcommand, except top-level options the subcommand
@@ -128,9 +138,7 @@
                   ;; subcommand option's value travels with it so it is
                   ;; never mistaken for a top-level option.
                   (found-cmd
-                   (let* ((sub-options
-                            (filter option-spec?
-                                    (cmd-specs (find-command commands found-cmd))))
+                   (let* ((sub-options (filter option-spec? (cmd-specs found-cmd)))
                           (so (and (not (help-token? arg))
                                    (find-option sub-options arg)))
                           (to (and (not so) (not (help-token? arg))
@@ -139,14 +147,14 @@
                        (to
                         (let ((r (apply-option to arg rest opts errors)))
                           (loop (cadr r) (car r) pos-args found-cmd
-                                cmd-argv (caddr r))))
+                                cmd-argv (caddr r) bad-cmd)))
                        ((and so (takes-value? so arg)
                              (pair? rest) (valid-value? (car rest)))
                         (loop (cdr rest) opts pos-args found-cmd
-                              (cons (car rest) (cons arg cmd-argv)) errors))
+                              (cons (car rest) (cons arg cmd-argv)) errors bad-cmd))
                        (else
                         (loop rest opts pos-args found-cmd
-                              (cons arg cmd-argv) errors)))))
+                              (cons arg cmd-argv) errors bad-cmd)))))
 
                   ;; --help wins over everything else, errors included
                   ((help-token? arg)
@@ -156,45 +164,50 @@
                    => (lambda (o)
                         (let ((r (apply-option o arg rest opts errors)))
                           (loop (cadr r) (car r) pos-args found-cmd
-                                cmd-argv (caddr r)))))
+                                cmd-argv (caddr r) bad-cmd))))
 
                   ;; Option-shaped but matches nothing: a negative number
                   ;; is data, anything else is a mistake.
                   ((option-shaped? arg)
                    (if (real-number-token? arg)
                        (loop rest opts (cons arg pos-args) found-cmd
-                             cmd-argv errors)
+                             cmd-argv errors bad-cmd)
                        (loop rest opts pos-args found-cmd cmd-argv
                              (cons (string-append "unknown option '"
                                                   (option-token-name arg) "'")
-                                   errors))))
+                                   errors)
+                             bad-cmd)))
 
-                  ((find-command commands arg)
-                   (loop rest opts pos-args arg cmd-argv errors))
+                  ((and (not bad-cmd) (find-command commands arg))
+                   => (lambda (cs)
+                        (loop rest opts pos-args cs cmd-argv errors bad-cmd)))
 
                   ;; With commands but no positionals a bare word can only
-                  ;; be a mistyped command; what follows would have been
-                  ;; its arguments, so stop here.
+                  ;; be a mistyped command. Report the first one; later
+                  ;; bare words would have been its arguments, so they are
+                  ;; skipped, while option-shaped tokens keep being checked.
                   ((and (pair? commands) (null? arguments))
-                   (loop '() opts pos-args found-cmd cmd-argv
-                         (cons (string-append "unknown command '" arg "'")
-                               errors)))
+                   (loop rest opts pos-args found-cmd cmd-argv
+                         (if bad-cmd
+                             errors
+                             (cons (string-append "unknown command '" arg "'")
+                                   errors))
+                         (or bad-cmd arg)))
 
                   (else
                    (loop rest opts (cons arg pos-args)
-                         found-cmd cmd-argv errors))))))))
+                         found-cmd cmd-argv errors bad-cmd))))))))
 
     ;; Build the result: parse the subcommand's argv, bind positionals,
     ;; and report positionals beyond the declared ones.
-    (define (finish-parse arguments commands opts pos found-cmd cmd-argv errors)
-      (let* ((cs (and found-cmd (find-command commands found-cmd)))
-             (sub (and cs (parse-args (cmd-specs cs) cmd-argv)))
+    (define (finish-parse arguments opts pos found-cmd cmd-argv errors)
+      (let* ((sub (and found-cmd (parse-args (cmd-specs found-cmd) cmd-argv)))
              (extra (if (> (length pos) (length arguments))
                         (list-tail pos (length arguments))
                         '())))
         (make-parsed opts
                      (match-positional arguments pos)
-                     found-cmd
+                     (and found-cmd (cmd-name found-cmd))
                      sub
                      (append errors
                              (map (lambda (x)
