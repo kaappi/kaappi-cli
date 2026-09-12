@@ -139,6 +139,14 @@
 (let ((r (run-cli-parse app '("--count=1/2"))))
   (check "rational syntax coerces" 1/2 (parsed-ref r "count")))
 
+(let ((r (run-cli-parse app '("--count="))))
+  (check "empty attached value on a numeric option is the empty string" ""
+    (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("--output="))))
+  (check "empty attached value on a string option is the empty string" ""
+    (parsed-ref r "output")))
+
 ;; --- Arguments ---
 (display "=== Arguments ===") (newline)
 
@@ -151,6 +159,50 @@
   (let ((args (parsed-args r)))
     (check "arg after flag" "data.csv"
       (if (pair? args) (cdar args) #f))))
+
+;; --- Result accessors on missing and non-boolean values ---
+(display "=== Accessors ===") (newline)
+
+(let ((r (run-cli-parse app '())))
+  (check "missing positional binds #f" '(("input" . #f)) (parsed-args r))
+  (check "parsed-ref on an undeclared name" #f (parsed-ref r "nope"))
+  (check "parsed-flag? on an unset flag" #f (parsed-flag? r "verbose"))
+  (check "parsed-flag? on a value option" #f (parsed-flag? r "count"))
+  (check "parsed-flag? on an undeclared name" #f (parsed-flag? r "nope"))
+  (check "no command" #f (parsed-command r))
+  (check "no sub result" #f (parsed-sub r)))
+
+;; the README's (or (cdr (car (parsed-args r))) "World") idiom rests on
+;; the missing positional being present and #f
+(let ((r (run-cli-parse app '())))
+  (check "or-default idiom on a missing positional" "World"
+    (or (cdr (car (parsed-args r))) "World")))
+
+(let ((r (run-cli-parse app '("init"))))
+  (check "missing subcommand positional binds #f" '(("name" . #f))
+    (parsed-args (parsed-sub r))))
+
+;; --- Option with no default ---
+(display "=== No-default options ===") (newline)
+
+;; #f when absent, an uncoerced string when given
+(define dapp
+  (cli "dapp" "Defaults"
+    (option "-c" "--config" "Config file")))
+
+(let ((r (run-cli-parse dapp '())))
+  (check "option without default is #f" #f (parsed-ref r "config")))
+
+(let ((r (run-cli-parse dapp '("-c" "app.toml"))))
+  (check "option without default takes a string" "app.toml"
+    (parsed-ref r "config")))
+
+(let ((r (run-cli-parse dapp '("--config=42"))))
+  (check "option without default does not coerce" "42" (parsed-ref r "config")))
+
+(let ((out (capture-output (lambda () (generate-help dapp)))))
+  (check "option without default shows no default in help" #t
+    (string-contains? out "  -c, --config <value>      Config file\n")))
 
 ;; --- Subcommands ---
 (display "=== Commands ===") (newline)
@@ -175,6 +227,16 @@
 
 (let ((r (run-cli-parse app '("-h"))))
   (check "help short" #t (parsed-ref r "help")))
+
+;; help short-circuits the parse: positionals, command, sub result and
+;; errors are not returned, while options parsed before it are kept
+(let ((r (run-cli-parse app '("data.csv" "-n" "3" "-v" "--help"))))
+  (check "help discards positionals parsed before it" '() (parsed-args r))
+  (check "help leaves no command" #f (parsed-command r))
+  (check "help leaves no sub result" #f (parsed-sub r))
+  (check "help result has no errors" '() (parsed-errors r))
+  (check "help keeps options parsed before it" 3 (parsed-ref r "count"))
+  (check "help keeps flags parsed before it" #t (parsed-flag? r "verbose")))
 
 ;; --- Subcommand help ---
 (display "=== Subcommand Help ===") (newline)
@@ -782,12 +844,36 @@
   (check "generate-help with a declared command still works" #t
     (string-contains? out "myapp build — Build the project")))
 
-;; --- Generated help output ---
-(display "=== Help Output ===") (newline)
-(generate-help app)
-(newline)
-(display "=== Subcommand Help ===") (newline)
-(generate-help app "build")
+;; --- Generated help layout ---
+;; Exact rows, so a change to column alignment or section order shows up
+;; here rather than in a user's terminal.
+(display "=== Help layout ===") (newline)
+
+(let ((out (capture-output (lambda () (generate-help app)))))
+  (check "app help title line" #t
+    (string-contains? out "myapp — A test application\n\nUsage: "))
+  (check "app help usage line" #t
+    (string-contains? out "Usage: myapp [options] <command> <input>\n\nOptions:\n"))
+  (check "app help flag row" #t
+    (string-contains? out "  -v, --verbose             Verbose output\n"))
+  (check "app help numeric option row" #t
+    (string-contains? out "  -n, --count <value>       Number of items (default: 10)\n"))
+  (check "app help string option row" #t
+    (string-contains? out "  -o, --output <value>      Output file (default: out.txt)\n"))
+  (check "app help built-in row closes the options" #t
+    (string-contains? out "  -h, --help                Show this help\n\nArguments:\n"))
+  (check "app help argument row" #t
+    (string-contains? out "Arguments:\n  <input>                   Input file\n\nCommands:\n"))
+  (check "app help command rows" #t
+    (string-contains? out "Commands:\n  init                      Initialize a project\n  build                     Build the project\n")))
+
+(let ((out (capture-output (lambda () (generate-help app "build")))))
+  (check "sub help title line" #t
+    (string-contains? out "myapp build — Build the project\n\nUsage: myapp build [options]\n\nOptions:\n"))
+  (check "sub help option row" #t
+    (string-contains? out "  -j, --jobs <value>        Parallel jobs (default: 4)\n  -h, --help                Show this help\n"))
+  (check "sub help has no arguments section" #f (string-contains? out "Arguments:"))
+  (check "sub help has no commands section" #f (string-contains? out "Commands:")))
 
 (newline)
 (display "=== Results: ")
