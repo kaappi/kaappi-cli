@@ -100,7 +100,13 @@ string `"error"`. Each `proc` receives the parsed result.
 
 `--help` and `-h` are handled automatically, at the top level and after a
 subcommand: `mytool --help` prints the app help, `mytool build --help`
-prints help for the `build` subcommand.
+prints help for the `build` subcommand. Every help page lists the
+`-h, --help` row, including pages for specs that declare no options of
+their own.
+
+Because of that, `-h` and `--help` are reserved: `flag` and `option`
+raise an error when given either name, so the collision is caught when
+the spec is built rather than at the first invocation.
 
 ## Subcommands
 

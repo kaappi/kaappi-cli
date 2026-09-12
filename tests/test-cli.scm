@@ -555,6 +555,71 @@
 (let ((r (run-cli-parse sapp '("-j2" "build"))))
   (check "attached value before command is top" 2 (parsed-ref r "jobs")))
 
+;; --- Help row on every page ---
+(display "=== Help row ===") (newline)
+
+;; init declares no options, but -h still works there, so the page says so
+(let ((out (capture-output (lambda () (generate-help app "init")))))
+  (check "option-less subcommand shows Options" #t
+    (string-contains? out "Options:"))
+  (check "option-less subcommand shows the help row" #t
+    (string-contains? out "  -h, --help                Show this help"))
+  (check "option-less subcommand usage mentions options" #t
+    (string-contains? out "Usage: myapp init [options] <name>")))
+
+(define napp
+  (cli "napp" "No options at all"
+    (argument "file" "Input file")))
+
+(let ((out (capture-output (lambda () (generate-help napp)))))
+  (check "option-less app shows the help row" #t
+    (string-contains? out "  -h, --help                Show this help"))
+  (check "option-less app usage mentions options" #t
+    (string-contains? out "Usage: napp [options] <file>")))
+
+(let ((r (run-cli-parse napp '("-h"))))
+  (check "option-less app still honours -h" #t (parsed-ref r "help")))
+
+;; --- Reserved help names ---
+(display "=== Reserved names ===") (newline)
+
+(define (spec-error thunk)
+  (guard (e ((error-object? e) (error-object-message e)))
+    (thunk)
+    #f))
+
+(check "flag --help is rejected"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "-H" "--help" "Detail"))))
+
+(check "option --help is rejected"
+  "option: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (option "-H" "--help" "Detail level" 2))))
+
+(check "flag -h is rejected"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "-h" "--host" "Host"))))
+
+(check "option -h is rejected"
+  "option: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (option "-h" "--host" "Host" "localhost"))))
+
+;; the reservation covers both slots, whichever spelling lands in them
+(check "-h in the long slot is rejected"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "-H" "-h" "H"))))
+
+(check "--help in the short slot is rejected"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "--help" "--helper" "H"))))
+
+(check "a name that merely starts with help is fine" #f
+  (spec-error (lambda () (flag "-H" "--helper" "Helper"))))
+
+(check "reserved name inside a command spec is rejected too"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (command "x" "X" (flag "-h" "--hard" "Hard")))))
+
 ;; --- Generated help output ---
 (display "=== Help Output ===") (newline)
 (generate-help app)

@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (`mytool build -n 5`); a subcommand option of the same name wins there
 
 ### Changed
+- `flag` and `option` raise an error when given the reserved name `-h`
+  or `--help`. Declaring `--help` used to store the value under the
+  `"help"` key that dispatch checks, so every invocation printed help
+- Every help page now has an Options section with the `-h, --help` row
+  and says `[options]` in its usage line, including pages for specs that
+  declare no options of their own; `-h` was already accepted there
 - `run-cli` exits with status 2 on a usage error, after printing each
   message and a `--help` hint to stderr. Previously every error path
   exited 0
