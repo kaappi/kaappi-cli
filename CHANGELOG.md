@@ -24,8 +24,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   arguments and raise with a message naming the builder: names and
   descriptions must be strings, a short name is `-` plus one character,
   a long name is `--` plus a name without `=`, command and argument names
-  are non-empty and do not start with `-`, and option, argument, and
-  command names are unique within one level. A malformed spec used to
+  are non-empty and do not start with `-`, option, argument, and
+  command names are unique within one level, and an argument may not
+  share a name with a command at the same level. A malformed spec used to
   crash at the first invocation or halfway through a help page, or store
   values under a mangled key; a duplicate long name cross-wired the two
   options

@@ -60,7 +60,7 @@
     (define (check-name who what v)
       (check-string who what v)
       (when (= (string-length v) 0)
-        (spec-error who (string-append what " must not be empty")))
+        (spec-error who (string-append what " must not be empty") v))
       (when (char=? (string-ref v 0) #\-)
         (spec-error who (string-append what " must not start with \"-\"") v)))
 
@@ -84,17 +84,43 @@
                    (not (str-has? long #\=)))
         (spec-error who "long name must be \"--\" followed by a name without \"=\"" long)))
 
-    ;; Every element must come from a builder, and names must be unique
-    ;; within one level: an option's short and long name, an argument's
-    ;; name, a command's name. A subcommand may reuse a top-level option
-    ;; name; that is what makes its own option win after its token.
+    ;; A spec element must have a builder's shape: the right tag and
+    ;; length, and fields that pass the builder's own checks, so a
+    ;; hand-written list is held to the same rules as a built one.
+    (define (check-spec who s)
+      (unless (and (list? s) (pair? s)
+                   (let ((n (length s)))
+                     (case (car s)
+                       ((flag command) (= n 4))
+                       ((option) (= n 5))
+                       ((argument) (= n 3))
+                       (else #f))))
+        (spec-error who "not a spec built by flag, option, argument or command" s))
+      (case (car s)
+        ((flag option)
+         (check-option-names who (opt-short s) (opt-long s))
+         (check-string who "description" (opt-desc s)))
+        ((argument)
+         (check-name who "argument name" (arg-name s))
+         (check-string who "description" (arg-desc s)))
+        (else
+         (check-name who "command name" (cmd-name s))
+         (check-string who "description" (cmd-desc s))
+         (unless (list? (cmd-specs s))
+           (spec-error who "not a spec built by flag, option, argument or command" s))
+         (check-specs 'command (cmd-specs s)))))
+
+    ;; Names must be unique within one level: an option's short and long
+    ;; name, an argument's name, a command's name. An argument may not
+    ;; share a name with a command at the same level either, since the
+    ;; parser tries commands first and the argument could never receive
+    ;; that word. A subcommand may reuse a top-level option name; that is
+    ;; what makes its own option win after its token.
     (define (check-specs who specs)
       (let loop ((ss specs) (shorts '()) (longs '()) (args '()) (cmds '()))
         (unless (null? ss)
           (let ((s (car ss)))
-            (unless (and (pair? s)
-                         (memq (car s) '(flag option argument command)))
-              (spec-error who "not a spec built by flag, option, argument or command" s))
+            (check-spec who s)
             (cond
               ((option-spec? s)
                (when (member (opt-short s) shorts)
@@ -106,10 +132,14 @@
               ((eq? (spec-type s) 'argument)
                (when (member (arg-name s) args)
                  (spec-error who "duplicate argument name" (arg-name s)))
+               (when (member (arg-name s) cmds)
+                 (spec-error who "argument name is also a command name" (arg-name s)))
                (loop (cdr ss) shorts longs (cons (arg-name s) args) cmds))
               (else
                (when (member (cmd-name s) cmds)
                  (spec-error who "duplicate command name" (cmd-name s)))
+               (when (member (cmd-name s) args)
+                 (spec-error who "command name is also an argument name" (cmd-name s)))
                (loop (cdr ss) shorts longs args (cons (cmd-name s) cmds))))))))
 
     ;; Spec accessors

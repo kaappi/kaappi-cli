@@ -713,6 +713,42 @@
   "command: not a spec built by flag, option, argument or command"
   (spec-error (lambda () (command "build" "B" '(bogus)))))
 
+;; a hand-written list is held to the builder's shape and rules
+(check "tag-shaped list with missing fields"
+  "cli: not a spec built by flag, option, argument or command"
+  (spec-error (lambda () (cli "t" "T" '(flag "-x")))))
+
+(check "option list missing the default slot"
+  "cli: not a spec built by flag, option, argument or command"
+  (spec-error (lambda () (cli "t" "T" '(option "-n" "--count" "N")))))
+
+(check "hand-written spec with a bad name"
+  "cli: long name must be \"--\" followed by a name without \"=\""
+  (spec-error (lambda () (cli "t" "T" '(flag "-x" "x" "X")))))
+
+(check "hand-written command is validated inside"
+  "command: duplicate long option name"
+  (spec-error (lambda () (cli "t" "T" (list 'command "b" "B"
+                                         (list (flag "-a" "--all" "A")
+                                               (flag "-b" "--all" "B")))))))
+
+;; an argument named like a same-level command could never receive that
+;; word, since commands are matched first
+(check "argument name colliding with a command"
+  "cli: argument name is also a command name"
+  (spec-error (lambda () (cli "t" "T" (command "init" "I")
+                                      (argument "init" "Name")))))
+
+(check "command name colliding with an argument"
+  "cli: command name is also an argument name"
+  (spec-error (lambda () (cli "t" "T" (argument "init" "Name")
+                                      (command "init" "I")))))
+
+;; the reserved-name check runs before the shape checks
+(check "reserved name wins over a malformed partner"
+  "flag: -h and --help are reserved for the built-in help"
+  (spec-error (lambda () (flag "-h" "" "X"))))
+
 ;; still allowed
 (check "subcommand may reuse a top-level option name" #f
   (spec-error (lambda () (cli "t" "T" (option "-j" "--jobs" "J" 1)

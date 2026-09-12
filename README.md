@@ -68,11 +68,13 @@ Arguments:
 
 Every builder validates its arguments when the spec is built and raises
 an error naming the builder and the offending value: a short name must be
-`-` plus one character, a long name `--` plus a name without `=`, and
-names and descriptions must be strings. `cli` and `command` also reject a
-duplicate option, argument, or command name within their own level. A
-subcommand may reuse a top-level option name; see
-[Option Placement](#option-placement).
+`-` plus one character, a long name `--` plus a name without `=`, a
+command or argument name is non-empty and does not start with `-`, and
+names and descriptions must be strings. `cli` and `command` accept only
+specs made by these builders, and reject a duplicate option, argument, or
+command name within their own level, as well as an argument named like a
+command at the same level. A subcommand may reuse a top-level option
+name; see [Option Placement](#option-placement).
 
 ### Parsing
 
