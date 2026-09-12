@@ -142,6 +142,11 @@ top-level `--verbose` flag, `mytool -v build` and `mytool build -v` are
 equivalent. When a subcommand declares an option with the same name, the
 subcommand's wins after its token; put the top-level one before it.
 
+Short options may be clustered, and a value may be attached to its option:
+`-vv`, `-vn 3`, `-n3`, `-n=3` and `-vn3` all work as in getopt. The first
+option in a cluster that takes a value swallows the rest of the token, so
+`-nv` is `count` = `"v"`, not `-n` plus `-v`.
+
 `--` ends option parsing. Every later token is positional data, so
 `mytool -- -x` passes `-x` as the argument. A dash-leading token that reads
 as a real number (`-5`, `-1.5e2`) is always taken as data, and the lone `-`
@@ -156,8 +161,7 @@ The parser reports input it cannot use instead of ignoring it:
 - a bare word that is not a declared command, when the app has commands
   but no positional arguments; later bare words are taken as that
   command's arguments and not reported, later options still are
-- a dash-leading token that matches no option and is not a number
-  (`-vn`, `-n5`)
+- a dash-leading token whose first letter is not an option (`-foo`)
 - more positionals than declared
 - no command given, when the app has commands but no `#f` handler
 

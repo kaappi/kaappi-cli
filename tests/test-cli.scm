@@ -303,15 +303,18 @@
   (check "-- after an unknown command hides the rest" #f
     (parsed-flag? r "verbose")))
 
-;; a dash-leading token that is neither a declared option nor a number is
-;; an unknown option, no longer positional data (clusters: see #14)
-(let ((r (run-cli-parse app '("-vn"))))
-  (check "dash cluster is an unknown option" '("unknown option '-vn'")
+;; a dash-leading token whose first letter is no option is an unknown
+;; option, not positional data
+(let ((r (run-cli-parse app '("-foo"))))
+  (check "unknown cluster is reported whole" '("unknown option '-foo'")
     (parsed-errors r))
-  (check "dash cluster is not positional data" #f (cdar (parsed-args r))))
+  (check "unknown cluster is not positional data" #f (cdar (parsed-args r))))
 
-(let ((r (run-cli-parse app '("-n5"))))
-  (check "glued short value is an unknown option" '("unknown option '-n5'")
+;; a rejected option value that is itself a bad cluster is reported twice:
+;; once for the option left without a value, once for the token
+(let ((r (run-cli-parse app '("-o" "-foo"))))
+  (check "rejected value cluster"
+    '("option '-o' requires a value" "unknown option '-foo'")
     (parsed-errors r)))
 
 ;; subcommand errors surface at the top level and in the sub result
@@ -467,6 +470,90 @@
     (capture-output
       (lambda () (run-cli iapp '() '("-i"))))
     'returned))
+
+;; --- Short option clusters ---
+(display "=== Short option clusters ===") (newline)
+
+(let ((r (run-cli-parse app '("-vv"))))
+  (check "repeated flag" #t (parsed-flag? r "verbose"))
+  (check "repeated flag is not positional" #f (cdar (parsed-args r)))
+  (check "repeated flag is clean" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-vn" "3"))))
+  (check "flag then option: flag" #t (parsed-flag? r "verbose"))
+  (check "flag then option takes next token" 3 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("-n5"))))
+  (check "attached value" 5 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("-n=5"))))
+  (check "attached value with =" 5 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("-vn5" "f.txt"))))
+  (check "flag with attached value: flag" #t (parsed-flag? r "verbose"))
+  (check "flag with attached value: value" 5 (parsed-ref r "count"))
+  (check "positional after cluster" "f.txt" (cdar (parsed-args r))))
+
+(let ((r (run-cli-parse app '("-n-5"))))
+  (check "attached negative value" -5 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("-nv"))))
+  (check "value option swallows the rest of the token" "v"
+    (parsed-ref r "count"))
+  (check "swallowed letter is not a flag" #f (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("-ores.txt"))))
+  (check "attached string value" "res.txt" (parsed-ref r "output")))
+
+;; attached values are taken verbatim: only the first = splits, and an
+;; option-shaped value is not second-guessed
+(let ((r (run-cli-parse app '("-o=a=b"))))
+  (check "attached value keeps later =" "a=b" (parsed-ref r "output")))
+
+(let ((r (run-cli-parse app '("-o-v"))))
+  (check "attached option-shaped value is verbatim" "-v" (parsed-ref r "output"))
+  (check "attached option-shaped value is not a flag" #f (parsed-flag? r "verbose"))
+  (check "attached option-shaped value is clean" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-vn"))))
+  (check "cluster ending in a value option needs a value"
+    '("option '-n' requires a value") (parsed-errors r))
+  (check "cluster flag still set when value is missing" #t
+    (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("-vh"))))
+  (check "-h inside a cluster is help" #t (parsed-ref r "help")))
+
+(let ((r (run-cli-parse app '("-vz"))))
+  (check "unknown letter after a known one" '("unknown option '-z'")
+    (parsed-errors r))
+  (check "known letters before an unknown one still apply" #t
+    (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("-1.5e2"))))
+  (check "negative real is still data, not a cluster" "-1.5e2"
+    (cdar (parsed-args r))))
+
+(let ((r (run-cli-parse app '("--" "-vn5"))))
+  (check "cluster after -- is data" "-vn5" (cdar (parsed-args r))))
+
+;; clusters around the command token
+(let ((r (run-cli-parse app '("build" "-j8"))))
+  (check "sub option attached value" 8 (parsed-ref (parsed-sub r) "jobs")))
+
+(let ((r (run-cli-parse app '("init" "-vn5" "x"))))
+  (check "top-level cluster after command: flag" #t (parsed-flag? r "verbose"))
+  (check "top-level cluster after command: value" 5 (parsed-ref r "count"))
+  (check "top-level cluster after command: sub positional" "x"
+    (cdar (parsed-args (parsed-sub r)))))
+
+(let ((r (run-cli-parse sapp '("build" "-j8"))))
+  (check "shadowed attached value goes to sub" 8
+    (parsed-ref (parsed-sub r) "jobs"))
+  (check "shadowed attached value leaves top default" 1 (parsed-ref r "jobs")))
+
+(let ((r (run-cli-parse sapp '("-j2" "build"))))
+  (check "attached value before command is top" 2 (parsed-ref r "jobs")))
 
 ;; --- Generated help output ---
 (display "=== Help Output ===") (newline)
