@@ -37,3 +37,23 @@ jobs:
           use_oidc: true
           files: coverage.xml
           fail_ci_if_error: false
+
+  # The library, suite and example are R7RS-small only. Kaappi resolves
+  # bindings from libraries a file did not import, so it cannot catch a
+  # missing import; Chibi enforces import partitioning and can.
+  r7rs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chibi Scheme
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq chibi-scheme
+
+      - name: Run tests under Chibi
+        run: chibi-scheme -I lib tests/test-cli.scm
+
+      - name: Run the example under Chibi
+        run: |
+          chibi-scheme -I lib examples/greeter.scm -l Bob
+          chibi-scheme -I lib examples/greeter.scm farewell

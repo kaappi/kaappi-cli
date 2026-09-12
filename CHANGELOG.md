@@ -47,6 +47,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   page
 
 ### Fixed
+- The library, test suite, and example use only identifiers from the
+  libraries they import: the suite now imports `(scheme process-context)`
+  for `exit`, the example imports `(scheme char)` and uses its
+  `string-upcase` instead of a hand-rolled copy, and the library no longer
+  redefines the imported `list-ref`. Verified under Chibi Scheme, which
+  enforces R7RS import partitioning; CI now runs the suite there too
 - `generate-help` with a subcommand name that is not declared raises
   `generate-help: no such command` instead of printing the app's page
   under the unknown name, as if the command existed

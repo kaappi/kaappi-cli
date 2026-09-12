@@ -1,5 +1,5 @@
 ;;; Example CLI app with subcommands
-(import (scheme base) (scheme write) (kaappi cli))
+(import (scheme base) (scheme write) (scheme char) (kaappi cli))
 
 (define app
   (cli "greeter" "A friendly greeting tool"
@@ -27,12 +27,3 @@
                        (display name)
                        (display "!")
                        (newline))))))
-
-(define (string-upcase s)
-  (let* ((len (string-length s))
-         (out (make-string len)))
-    (let loop ((i 0))
-      (when (< i len)
-        (string-set! out i (char-upcase (string-ref s i)))
-        (loop (+ i 1))))
-    out))

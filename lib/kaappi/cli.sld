@@ -154,9 +154,6 @@
     (define (cmd-desc s) (caddr s))
     (define (cmd-specs s) (cadddr s))
 
-    (define (list-ref lst n)
-      (if (= n 0) (car lst) (list-ref (cdr lst) (- n 1))))
-
     (define (is-flag? s) (eq? (spec-type s) 'flag))
 
     (define (opt-long-name s)
