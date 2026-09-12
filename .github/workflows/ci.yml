@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # edited: a PR retargeted to main (a stacked PR whose base just merged)
+    # must start a run, since branch protection requires the test check.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   id-token: write
