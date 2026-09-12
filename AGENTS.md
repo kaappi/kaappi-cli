@@ -30,6 +30,14 @@ If a `kaappi` binary is already on PATH, use it instead, but keep the
 `--lib-path lib` flag: it is what makes `(import (kaappi cli))` resolve to
 this repo's `lib/` rather than an installed package.
 
+Kaappi resolves bindings from libraries a file did not import, so it cannot
+tell you about a missing import. CI also runs the suite under Chibi Scheme,
+which enforces R7RS import partitioning; to check locally:
+
+```bash
+chibi-scheme -I lib tests/test-cli.scm
+```
+
 Coverage (CI also uploads this) and the example:
 
 ```bash

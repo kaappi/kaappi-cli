@@ -3,7 +3,7 @@
 ;;; Declarative argument parsing, subcommands, and help generation.
 
 (define-library (kaappi cli)
-  (import (scheme base) (scheme write) (scheme char)
+  (import (scheme base) (scheme write)
           (scheme process-context) (scheme cxr))
   (export cli flag option argument command
           parsed-ref parsed-flag? parsed-args parsed-command parsed-sub
@@ -153,9 +153,6 @@
     (define (cmd-name s) (cadr s))
     (define (cmd-desc s) (caddr s))
     (define (cmd-specs s) (cadddr s))
-
-    (define (list-ref lst n)
-      (if (= n 0) (car lst) (list-ref (cdr lst) (- n 1))))
 
     (define (is-flag? s) (eq? (spec-type s) 'flag))
 

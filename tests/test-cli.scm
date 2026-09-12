@@ -1,4 +1,4 @@
-(import (scheme base) (scheme write) (kaappi cli))
+(import (scheme base) (scheme write) (scheme process-context) (kaappi cli))
 
 (define pass 0)
 (define fail 0)
