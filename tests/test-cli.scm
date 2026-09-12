@@ -505,6 +505,16 @@
 (let ((r (run-cli-parse app '("-ores.txt"))))
   (check "attached string value" "res.txt" (parsed-ref r "output")))
 
+;; attached values are taken verbatim: only the first = splits, and an
+;; option-shaped value is not second-guessed
+(let ((r (run-cli-parse app '("-o=a=b"))))
+  (check "attached value keeps later =" "a=b" (parsed-ref r "output")))
+
+(let ((r (run-cli-parse app '("-o-v"))))
+  (check "attached option-shaped value is verbatim" "-v" (parsed-ref r "output"))
+  (check "attached option-shaped value is not a flag" #f (parsed-flag? r "verbose"))
+  (check "attached option-shaped value is clean" '() (parsed-errors r)))
+
 (let ((r (run-cli-parse app '("-vn"))))
   (check "cluster ending in a value option needs a value"
     '("option '-n' requires a value") (parsed-errors r))

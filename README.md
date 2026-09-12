@@ -161,7 +161,7 @@ The parser reports input it cannot use instead of ignoring it:
 - a bare word that is not a declared command, when the app has commands
   but no positional arguments; later bare words are taken as that
   command's arguments and not reported, later options still are
-- a dash-leading token whose letters are not options (`-foo`)
+- a dash-leading token whose first letter is not an option (`-foo`)
 - more positionals than declared
 - no command given, when the app has commands but no `#f` handler
 
