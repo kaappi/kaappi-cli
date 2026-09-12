@@ -182,7 +182,10 @@
   (check "missing subcommand positional binds #f" '(("name" . #f))
     (parsed-args (parsed-sub r))))
 
-;; option with no default: #f when absent, an uncoerced string when given
+;; --- Option with no default ---
+(display "=== No-default options ===") (newline)
+
+;; #f when absent, an uncoerced string when given
 (define dapp
   (cli "dapp" "Defaults"
     (option "-c" "--config" "Config file")))
@@ -225,12 +228,15 @@
 (let ((r (run-cli-parse app '("-h"))))
   (check "help short" #t (parsed-ref r "help")))
 
-;; help short-circuits the parse: what came before it is not returned
-(let ((r (run-cli-parse app '("data.csv" "-n" "3" "--help"))))
+;; help short-circuits the parse: positionals, command, sub result and
+;; errors are not returned, while options parsed before it are kept
+(let ((r (run-cli-parse app '("data.csv" "-n" "3" "-v" "--help"))))
   (check "help discards positionals parsed before it" '() (parsed-args r))
   (check "help leaves no command" #f (parsed-command r))
   (check "help leaves no sub result" #f (parsed-sub r))
-  (check "help result has no errors" '() (parsed-errors r)))
+  (check "help result has no errors" '() (parsed-errors r))
+  (check "help keeps options parsed before it" 3 (parsed-ref r "count"))
+  (check "help keeps flags parsed before it" #t (parsed-flag? r "verbose")))
 
 ;; --- Subcommand help ---
 (display "=== Subcommand Help ===") (newline)
