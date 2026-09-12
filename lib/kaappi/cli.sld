@@ -516,12 +516,13 @@
     (define (generate-help app . args)
       (let* ((sub-name (if (pair? args) (car args) #f))
              (name (cli-name app))
-             (sub (and sub-name
-                       (or (find-command
-                             (filter (lambda (s) (eq? (spec-type s) 'command))
-                                     (cli-specs app))
-                             sub-name)
-                           (error "generate-help: no such command" sub-name))))
+             (sub (if sub-name
+                      (or (find-command
+                            (filter (lambda (s) (eq? (spec-type s) 'command))
+                                    (cli-specs app))
+                            sub-name)
+                          (error "generate-help: no such command" sub-name))
+                      #f))
              (specs (if sub (cmd-specs sub) (cli-specs app)))
              (desc (if sub (cmd-desc sub) (cli-desc app)))
              (opts (filter (lambda (s) (or (eq? (spec-type s) 'option)

@@ -772,11 +772,11 @@
   "generate-help: no such command"
   (guard (e ((error-object? e) (error-object-message e)))
     (capture-output (lambda () (generate-help app "nope")))
-    'returned))
+    'returned))  ; reached only if generate-help returns normally: must fail
 
 (check "generate-help with an unknown command prints nothing first" ""
   (capture-output
-    (lambda () (guard (e (#t #f)) (generate-help app "nope")))))
+    (lambda () (guard (e ((error-object? e) #f)) (generate-help app "nope")))))
 
 (let ((out (capture-output (lambda () (generate-help app "build")))))
   (check "generate-help with a declared command still works" #t
