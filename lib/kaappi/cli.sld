@@ -7,6 +7,7 @@
           (scheme process-context) (scheme cxr))
   (export cli flag option argument command
           parsed-ref parsed-flag? parsed-args parsed-command parsed-sub
+          parsed-errors
           run-cli run-cli-parse generate-help)
   (begin
 
@@ -64,8 +65,8 @@
     (define (cli-desc c) (caddr c))
     (define (cli-specs c) (cadddr c))
 
-    (define (make-parsed opts args cmd sub)
-      (list 'parsed opts args cmd sub))
+    (define (make-parsed opts args cmd sub errors)
+      (list 'parsed opts args cmd sub errors))
 
     (define (parsed-ref result name)
       (let ((pair (assoc name (cadr result))))
@@ -80,16 +81,21 @@
 
     (define (parsed-sub result) (list-ref result 4))
 
+    ;; Usage errors as a list of strings, in argv order; '() when the
+    ;; parse was clean. A subcommand's errors are included here as well
+    ;; as in the subcommand's own result.
+    (define (parsed-errors result) (list-ref result 5))
+
     ;; =================================================================
     ;; Parser
     ;; =================================================================
 
     (define (parse-args specs argv)
-      (let ((options (filter (lambda (s) (or (eq? (spec-type s) 'option)
-                                             (eq? (spec-type s) 'flag))) specs))
+      (let ((options (filter option-spec? specs))
             (arguments (filter (lambda (s) (eq? (spec-type s) 'argument)) specs))
             (commands (filter (lambda (s) (eq? (spec-type s) 'command)) specs)))
 
+        ;; pos-args, cmd-argv and errors accumulate in reverse.
         (let loop ((argv argv)
                    (opts (map (lambda (o)
                                 (cons (opt-long-name o)
@@ -97,80 +103,104 @@
                               options))
                    (pos-args '())
                    (found-cmd #f)
-                   (cmd-argv '()))
+                   (cmd-argv '())
+                   (errors '()))
 
           (if (null? argv)
-              (make-parsed opts
-                (match-positional arguments (reverse pos-args))
-                found-cmd
-                (if found-cmd
-                    (let ((cs (find-command commands found-cmd)))
-                      (if cs (parse-args (cmd-specs cs) (reverse cmd-argv)) #f))
-                    #f))
+              (finish-parse arguments commands opts (reverse pos-args)
+                            found-cmd (reverse cmd-argv) (reverse errors))
 
               (let ((arg (car argv)) (rest (cdr argv)))
                 (cond
+                  ;; "--" ends option parsing: every later token is data.
+                  ;; After a command the whole tail, "--" included, is the
+                  ;; subcommand's to parse.
+                  ((equal? arg "--")
+                   (if found-cmd
+                       (loop '() opts pos-args found-cmd
+                             (append (reverse argv) cmd-argv) errors)
+                       (loop '() opts (append (reverse rest) pos-args)
+                             found-cmd cmd-argv errors)))
+
+                  ;; After the command token, tokens belong to the
+                  ;; subcommand, except top-level options the subcommand
+                  ;; does not define itself (its own option wins). A
+                  ;; subcommand option's value travels with it so it is
+                  ;; never mistaken for a top-level option.
                   (found-cmd
-                   (loop rest opts pos-args found-cmd (cons arg cmd-argv)))
+                   (let* ((sub-options
+                            (filter option-spec?
+                                    (cmd-specs (find-command commands found-cmd))))
+                          (so (and (not (help-token? arg))
+                                   (find-option sub-options arg)))
+                          (to (and (not so) (not (help-token? arg))
+                                   (find-option options arg))))
+                     (cond
+                       (to
+                        (let ((r (apply-option to arg rest opts errors)))
+                          (loop (cadr r) (car r) pos-args found-cmd
+                                cmd-argv (caddr r))))
+                       ((and so (takes-value? so arg)
+                             (pair? rest) (valid-value? (car rest)))
+                        (loop (cdr rest) opts pos-args found-cmd
+                              (cons (car rest) (cons arg cmd-argv)) errors))
+                       (else
+                        (loop rest opts pos-args found-cmd
+                              (cons arg cmd-argv) errors)))))
 
-                  ((or (equal? arg "--help") (equal? arg "-h"))
-                   (make-parsed (cons (cons "help" #t) opts) '() #f #f))
+                  ;; --help wins over everything else, errors included
+                  ((help-token? arg)
+                   (make-parsed (cons (cons "help" #t) opts) '() #f #f '()))
 
-                  ;; --name=value
-                  ((and (> (string-length arg) 2)
-                        (equal? (substring arg 0 2) "--")
-                        (str-has? arg #\=))
-                   (let* ((ep (str-idx arg #\=))
-                          (name (substring arg 0 ep))
-                          (val (substring arg (+ ep 1) (string-length arg)))
-                          (o (find-opt-long options name)))
-                     (if o
-                         (loop rest (set-opt opts (opt-long-name o)
-                                     (if (is-flag? o)
-                                         #t
-                                         (coerce val (opt-default o))))
-                               pos-args found-cmd cmd-argv)
-                         (loop rest opts pos-args found-cmd cmd-argv))))
+                  ((find-option options arg)
+                   => (lambda (o)
+                        (let ((r (apply-option o arg rest opts errors)))
+                          (loop (cadr r) (car r) pos-args found-cmd
+                                cmd-argv (caddr r)))))
 
-                  ;; --name [value]
-                  ((and (> (string-length arg) 2)
-                        (equal? (substring arg 0 2) "--"))
-                   (let ((o (find-opt-long options arg)))
-                     (if o
-                         (if (is-flag? o)
-                             (loop rest (set-opt opts (opt-long-name o) #t)
-                                   pos-args found-cmd cmd-argv)
-                             (if (and (pair? rest) (valid-value? (car rest)))
-                                 (loop (cdr rest)
-                                       (set-opt opts (opt-long-name o)
-                                         (coerce (car rest) (opt-default o)))
-                                       pos-args found-cmd cmd-argv)
-                                 (loop rest opts pos-args found-cmd cmd-argv)))
-                         (loop rest opts pos-args found-cmd cmd-argv))))
+                  ;; Option-shaped but matches nothing: a negative number
+                  ;; is data, anything else is a mistake.
+                  ((option-shaped? arg)
+                   (if (real-number-token? arg)
+                       (loop rest opts (cons arg pos-args) found-cmd
+                             cmd-argv errors)
+                       (loop rest opts pos-args found-cmd cmd-argv
+                             (cons (string-append "unknown option '"
+                                                  (option-token-name arg) "'")
+                                   errors))))
 
-                  ;; -x [value]
-                  ((and (= (string-length arg) 2) (char=? (string-ref arg 0) #\-))
-                   (let ((o (find-opt-short options arg)))
-                     (if o
-                         (if (is-flag? o)
-                             (loop rest (set-opt opts (opt-long-name o) #t)
-                                   pos-args found-cmd cmd-argv)
-                             (if (and (pair? rest) (valid-value? (car rest)))
-                                 (loop (cdr rest)
-                                       (set-opt opts (opt-long-name o)
-                                         (coerce (car rest) (opt-default o)))
-                                       pos-args found-cmd cmd-argv)
-                                 (loop rest opts pos-args found-cmd cmd-argv)))
-                         (loop rest opts pos-args found-cmd cmd-argv))))
-
-                  ;; command?
                   ((find-command commands arg)
-                   (loop rest opts pos-args arg cmd-argv))
+                   (loop rest opts pos-args arg cmd-argv errors))
 
-                  ;; positional
+                  ;; With commands but no positionals a bare word can only
+                  ;; be a mistyped command; what follows would have been
+                  ;; its arguments, so stop here.
+                  ((and (pair? commands) (null? arguments))
+                   (loop '() opts pos-args found-cmd cmd-argv
+                         (cons (string-append "unknown command '" arg "'")
+                               errors)))
+
                   (else
                    (loop rest opts (cons arg pos-args)
-                         found-cmd cmd-argv))))))))
+                         found-cmd cmd-argv errors))))))))
+
+    ;; Build the result: parse the subcommand's argv, bind positionals,
+    ;; and report positionals beyond the declared ones.
+    (define (finish-parse arguments commands opts pos found-cmd cmd-argv errors)
+      (let* ((cs (and found-cmd (find-command commands found-cmd)))
+             (sub (and cs (parse-args (cmd-specs cs) cmd-argv)))
+             (extra (if (> (length pos) (length arguments))
+                        (list-tail pos (length arguments))
+                        '())))
+        (make-parsed opts
+                     (match-positional arguments pos)
+                     found-cmd
+                     sub
+                     (append errors
+                             (map (lambda (x)
+                                    (string-append "unexpected argument '" x "'"))
+                                  extra)
+                             (if sub (parsed-errors sub) '())))))
 
     ;; =================================================================
     ;; Helpers
@@ -208,17 +238,72 @@
               ((null? vs) (reverse (append (map (lambda (s) (cons (arg-name s) #f)) ss) acc)))
               (else (loop (cdr ss) (cdr vs) (cons (cons (arg-name (car ss)) (car vs)) acc))))))
 
-    ;; A token that starts with "-" but is not a real number is another
-    ;; option/flag, never an option's value. Protects "-v", "--help"
-    ;; and "--"; the real? check also rejects number-shaped flags like
-    ;; "-i", which string->number parses as the complex -i. Negative
-    ;; reals ("-5", "-1.5e2") and the lone "-" (stdin convention)
-    ;; remain valid values.
-    (define (valid-value? tok)
+    (define (option-spec? s)
+      (or (eq? (spec-type s) 'option) (eq? (spec-type s) 'flag)))
+
+    ;; Token shapes: "--name", "--name=value", "-x". The lone "-" is data.
+    (define (option-shaped? tok)
+      (and (> (string-length tok) 1) (char=? (string-ref tok 0) #\-)))
+
+    (define (long-token? tok)
+      (and (> (string-length tok) 2) (string=? (substring tok 0 2) "--")))
+
+    ;; "--name=value" -> "--name"; any other token unchanged
+    (define (option-token-name tok)
+      (let ((ep (and (long-token? tok) (str-idx tok #\=))))
+        (if ep (substring tok 0 ep) tok)))
+
+    ;; "--name=value" -> "value"; #f when there is no "="
+    (define (option-token-value tok)
+      (let ((ep (and (long-token? tok) (str-idx tok #\=))))
+        (and ep (substring tok (+ ep 1) (string-length tok)))))
+
+    (define (help-token? tok)
+      (or (equal? tok "-h") (equal? (option-token-name tok) "--help")))
+
+    ;; The option spec a token names, or #f
+    (define (find-option options tok)
+      (cond ((long-token? tok) (find-opt-long options (option-token-name tok)))
+            ((and (= (string-length tok) 2) (option-shaped? tok))
+             (find-opt-short options tok))
+            (else #f)))
+
+    ;; A dash-leading token that is a real number ("-5", "-1.5e2") is
+    ;; data. real? rejects number-shaped flags such as "-i", which
+    ;; string->number reads as the complex -i.
+    (define (real-number-token? tok)
       (let ((n (string->number tok)))
-        (not (and (> (string-length tok) 1)
-                  (char=? (string-ref tok 0) #\-)
-                  (not (and n (real? n)))))))
+        (and n (real? n))))
+
+    ;; A token an option may take as its value: anything that is not
+    ;; option-shaped (the lone "-", the stdin convention, included) or a
+    ;; negative real number. "-v", "--help" and "--" are never values.
+    (define (valid-value? tok)
+      (or (not (option-shaped? tok)) (real-number-token? tok)))
+
+    ;; Does option o, written as tok, still need a value from the next token?
+    (define (takes-value? o tok)
+      (and (not (is-flag? o)) (not (option-token-value tok))))
+
+    ;; Apply option o for token tok, taking the value from "=value" or the
+    ;; next token. Returns (list opts rest errors). A flag ignores any
+    ;; =value; an option with no usable value keeps its default and
+    ;; records an error.
+    (define (apply-option o tok rest opts errors)
+      (let ((name (opt-long-name o)) (inline (option-token-value tok)))
+        (cond
+          ((is-flag? o)
+           (list (set-opt opts name #t) rest errors))
+          (inline
+           (list (set-opt opts name (coerce inline (opt-default o))) rest errors))
+          ((and (pair? rest) (valid-value? (car rest)))
+           (list (set-opt opts name (coerce (car rest) (opt-default o)))
+                 (cdr rest) errors))
+          (else
+           (list opts rest
+                 (cons (string-append "option '" (option-token-name tok)
+                                      "' requires a value")
+                       errors))))))
 
     (define (coerce s default)
       (if (and default (number? default))
@@ -325,6 +410,10 @@
 
     ;; (run-cli app handlers)      — parse (command-line), dispatch
     ;; (run-cli app handlers argv) — parse explicit argv (for testing)
+    ;;
+    ;; handlers is an alist keyed by command name, with (#f . proc) for
+    ;; "no command" and an optional (error . proc) that takes over usage
+    ;; error reporting. Every proc receives the parsed result.
     (define (run-cli app handlers . rest)
       (let* ((argv (if (pair? rest) (car rest) (cdr (command-line))))
              (result (parse-args (cli-specs app) argv)))
@@ -335,12 +424,43 @@
                 (parsed-sub result)
                 (parsed-ref (parsed-sub result) "help"))
            (generate-help app (parsed-command result)))
+          ((pair? (parsed-errors result))
+           (usage-error app handlers result))
           ((parsed-command result)
            (let ((h (assoc (parsed-command result) handlers)))
-             (if h ((cdr h) result)
-                 (begin (display "Unknown command: ")
-                        (display (parsed-command result)) (newline)
-                        (generate-help app)))))
+             (if h
+                 ((cdr h) result)
+                 ;; A declared command with no dispatch entry is a bug in
+                 ;; the app, not in the invocation.
+                 (error "run-cli: no handler for command"
+                        (parsed-command result)))))
           (else
            (let ((h (assoc #f handlers)))
-             (if h ((cdr h) result) (generate-help app)))))))))
+             (cond
+               (h ((cdr h) result))
+               ((pair? (filter (lambda (s) (eq? (spec-type s) 'command))
+                               (cli-specs app)))
+                (usage-error app handlers
+                             (add-error result "missing command")))
+               (else
+                (error "run-cli: no default (#f) handler"))))))))
+
+    (define (add-error result msg)
+      (make-parsed (cadr result) (parsed-args result) (parsed-command result)
+                   (parsed-sub result)
+                   (append (parsed-errors result) (list msg))))
+
+    ;; Report usage errors on stderr and exit 2, unless handlers has an
+    ;; (error . proc) entry, in which case proc decides.
+    (define (usage-error app handlers result)
+      (let ((h (assoc 'error handlers)))
+        (if h
+            ((cdr h) result)
+            (let ((err (current-error-port)) (name (cli-name app)))
+              (for-each (lambda (msg)
+                          (display name err) (display ": " err)
+                          (display msg err) (newline err))
+                        (parsed-errors result))
+              (display "Try '" err) (display name err)
+              (display " --help' for more information." err) (newline err)
+              (exit 2)))))))

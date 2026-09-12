@@ -74,6 +74,11 @@ Arguments:
 (run-cli-parse app argv)       ; parse explicit argv list (for testing)
 ```
 
+`handlers` is an alist: one `("name" . proc)` entry per subcommand, a
+`(#f . proc)` entry for invocations without a subcommand, and an optional
+`(error . proc)` entry for usage errors (see [Usage Errors](#usage-errors)).
+Each `proc` receives the parsed result.
+
 ### Result Access
 
 ```scheme
@@ -82,6 +87,7 @@ Arguments:
 (parsed-args result)           ; positional args as alist
 (parsed-command result)        ; subcommand name or #f
 (parsed-sub result)            ; parsed result for subcommand
+(parsed-errors result)         ; usage errors as a list of strings, '() if none
 ```
 
 ### Help
@@ -127,6 +133,64 @@ Options:
   -j, --jobs <value>        Parallel jobs (default: 4)
   -h, --help                Show this help
 ```
+
+## Option Placement
+
+Top-level options may come before or after the subcommand token: with a
+top-level `--verbose` flag, `mytool -v build` and `mytool build -v` are
+equivalent. When a subcommand declares an option with the same name, the
+subcommand's wins after its token; put the top-level one before it.
+
+`--` ends option parsing. Every later token is positional data, so
+`mytool -- -x` passes `-x` as the argument. A dash-leading token that reads
+as a real number (`-5`, `-1.5e2`) is always taken as data, and the lone `-`
+is an ordinary value.
+
+## Usage Errors
+
+The parser reports input it cannot use instead of ignoring it:
+
+- an option that is not declared: `--bogus`, `-z`
+- an option without a value: `-n` at the end of argv, or `-n -v`
+- a bare word that is not a declared command, when the app has commands
+  but no positional arguments
+- more positionals than declared
+- no command given, when the app has commands but no `#f` handler
+
+`run-cli` prints each message to stderr prefixed with the app name, adds a
+`--help` hint, and exits with status 2. Parsing continues past an error so
+every problem in the invocation is reported at once.
+
+```
+$ kaappi mytool.scm bulid
+mytool: unknown command 'bulid'
+Try 'mytool --help' for more information.
+$ echo $?
+2
+```
+
+`--help` anywhere in argv still prints help and exits 0, even when the
+rest of the invocation has errors.
+
+To report errors yourself, add an `error` entry to the handlers alist. It
+receives the parsed result, `(parsed-errors result)` lists the messages,
+and `run-cli` returns after calling it instead of exiting:
+
+```scheme
+(run-cli app
+  `((#f . ,main)
+    (error . ,(lambda (r)
+                (for-each (lambda (m) (display m) (newline)) (parsed-errors r))
+                (exit 64)))))
+```
+
+`run-cli-parse` never exits: it returns the result with the errors recorded,
+which is what tests should use. Errors from a subcommand parse appear in the
+top-level list and in the subcommand result's own list.
+
+Two situations are bugs in the program rather than in the invocation, so
+`run-cli` raises an error instead: a declared command with no entry in
+`handlers`, and an app with no commands and no `#f` handler.
 
 ## Type Coercion
 

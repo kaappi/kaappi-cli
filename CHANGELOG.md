@@ -6,7 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `parsed-errors` returns the usage errors recorded during a parse, as a
+  list of strings (`'()` when clean); subcommand errors are included
+- An `(error . proc)` entry in the `run-cli` handlers alist takes over
+  usage-error reporting
+- `--` ends option parsing; every later token is positional data
+- Top-level options are accepted after the subcommand token
+  (`mytool build -n 5`); a subcommand option of the same name wins there
+
+### Changed
+- `run-cli` exits with status 2 on a usage error, after printing each
+  message and a `--help` hint to stderr. Previously every error path
+  exited 0
+- A declared command with no handler entry, or an app with no commands
+  and no `#f` handler, now raises an error in `run-cli` instead of
+  printing "Unknown command" or the help page and exiting 0
+- With commands declared but no `#f` handler, invoking the app without a
+  command is a "missing command" usage error rather than a silent help
+  page
+
 ### Fixed
+- Unknown options (`--bogus`, `-z`) and, in a commands-only app, unknown
+  commands are reported instead of silently dropped
+- Positionals beyond the declared ones are reported as unexpected
+  arguments instead of silently discarded
+- An option with no usable value (`-n` at the end of argv, `-n -v`) is
+  reported; it still keeps its default
+- Top-level options after the subcommand token were dropped, and their
+  values shifted the subcommand's positionals
+- `--` was silently dropped, so a dash-leading positional could never be
+  passed; `-5` alone was dropped too
 - `--flag=value` (e.g. `--verbose=true`) no longer crashes the parser;
   the value part is ignored and the flag is set to `#t`
 - Option values no longer consume option-shaped tokens: `-n -v` now sets

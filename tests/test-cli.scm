@@ -37,6 +37,7 @@
             (else (loop (+ i 1)))))))
 
 (define last-call #f)
+(define last-errors #f)
 
 (define test-handlers
   `(("init" . ,(lambda (r)
@@ -48,10 +49,13 @@
     ("build" . ,(lambda (r)
                   (set! last-call
                     (cons "build" (parsed-ref (parsed-sub r) "jobs")))))
-    (#f . ,(lambda (r) (set! last-call 'default)))))
+    (#f . ,(lambda (r) (set! last-call 'default)))
+    ;; usage errors: record them instead of the default print-and-exit
+    (error . ,(lambda (r) (set! last-errors (parsed-errors r))))))
 
 (define (dispatch argv)
   (set! last-call #f)
+  (set! last-errors #f)
   (capture-output (lambda () (run-cli app test-handlers argv))))
 
 ;; --- Options ---
@@ -95,7 +99,9 @@
 ;; Option values never consume option-shaped tokens
 (let ((r (run-cli-parse app '("-n" "-v"))))
   (check "-n does not eat -v" 10 (parsed-ref r "count"))
-  (check "-n -v sets verbose" #t (parsed-flag? r "verbose")))
+  (check "-n -v sets verbose" #t (parsed-flag? r "verbose"))
+  (check "-n -v reports the missing value"
+    '("option '-n' requires a value") (parsed-errors r)))
 
 (let ((r (run-cli-parse app '("-n" "--help"))))
   (check "-n does not eat --help" #t (parsed-ref r "help"))
@@ -216,6 +222,220 @@
 (begin
   (dispatch '("input.txt"))
   (check "default handler still runs" 'default last-call))
+
+;; --- Errors ---
+(display "=== Errors ===") (newline)
+
+(let ((r (run-cli-parse app '("-v" "-n" "3" "f.txt"))))
+  (check "clean parse has no errors" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("--bogus"))))
+  (check "unknown long option" '("unknown option '--bogus'") (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("--bogus=5"))))
+  (check "unknown long option with =value" '("unknown option '--bogus'")
+    (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-z"))))
+  (check "unknown short option" '("unknown option '-z'") (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-z" "-v" "f.txt"))))
+  (check "parsing continues after an unknown option" #t (parsed-flag? r "verbose"))
+  (check "positional after an unknown option" "f.txt" (cdar (parsed-args r)))
+  (check "only the unknown option is reported" '("unknown option '-z'")
+    (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-z" "--bogus"))))
+  (check "errors keep argv order"
+    '("unknown option '-z'" "unknown option '--bogus'") (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-n"))))
+  (check "missing value at end of argv" '("option '-n' requires a value")
+    (parsed-errors r))
+  (check "missing value keeps the default" 10 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("--count" "-v"))))
+  (check "long option missing value names the long form"
+    '("option '--count' requires a value") (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("a.txt" "b.txt"))))
+  (check "extra positional" '("unexpected argument 'b.txt'") (parsed-errors r))
+  (check "declared positional still bound" "a.txt" (cdar (parsed-args r))))
+
+;; app has a positional, so a mistyped command fills it and the rest is extra
+(let ((r (run-cli-parse app '("inti" "proj"))))
+  (check "mistyped command with positionals declared"
+    '("unexpected argument 'proj'") (parsed-errors r)))
+
+;; commands-only app: a bare word can only be an unknown command
+(define capp
+  (cli "capp" "Commands only"
+    (flag "-v" "--verbose" "Verbose")
+    (command "init" "Initialize" (argument "name" "Name"))))
+
+(let ((r (run-cli-parse capp '("inti" "proj"))))
+  (check "unknown command" '("unknown command 'inti'") (parsed-errors r))
+  (check "unknown command is not a command" #f (parsed-command r))
+  (check "unknown command's arguments are not reported twice"
+    '() (parsed-args r)))
+
+(let ((r (run-cli-parse capp '("-v" "inti"))))
+  (check "options before an unknown command still parse" #t
+    (parsed-flag? r "verbose")))
+
+;; subcommand errors surface at the top level and in the sub result
+(let ((r (run-cli-parse app '("build" "--bogus"))))
+  (check "sub error at top level" '("unknown option '--bogus'") (parsed-errors r))
+  (check "sub error in sub result" '("unknown option '--bogus'")
+    (parsed-errors (parsed-sub r))))
+
+(let ((r (run-cli-parse app '("build" "-j"))))
+  (check "sub option missing value" '("option '-j' requires a value")
+    (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("init" "a" "b"))))
+  (check "sub extra positional" '("unexpected argument 'b'") (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-z" "build" "-j"))))
+  (check "top-level errors precede sub errors"
+    '("unknown option '-z'" "option '-j' requires a value") (parsed-errors r)))
+
+;; help wins over errors
+(let ((r (run-cli-parse app '("--bogus" "--help"))))
+  (check "help after an error still wins" #t (parsed-ref r "help"))
+  (check "help result carries no errors" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("--help=5"))))
+  (check "--help=value is help" #t (parsed-ref r "help")))
+
+;; --- End of options ---
+(display "=== End of options ===") (newline)
+
+(let ((r (run-cli-parse app '("--" "-v"))))
+  (check "-- makes -v data" "-v" (cdar (parsed-args r)))
+  (check "-- keeps verbose unset" #f (parsed-flag? r "verbose"))
+  (check "-- itself is not an error" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-v" "--" "--verbose"))))
+  (check "options before -- still parse" #t (parsed-flag? r "verbose"))
+  (check "long option after -- is data" "--verbose" (cdar (parsed-args r))))
+
+(let ((r (run-cli-parse app '("--" "init"))))
+  (check "command name after -- is data" #f (parsed-command r))
+  (check "command name after -- binds positional" "init" (cdar (parsed-args r))))
+
+(let ((r (run-cli-parse app '("--" "--"))))
+  (check "second -- is data" "--" (cdar (parsed-args r))))
+
+(let ((r (run-cli-parse app '("init" "--" "-x"))))
+  (check "-- after a command reaches the subcommand" "-x"
+    (cdar (parsed-args (parsed-sub r))))
+  (check "-- after a command is clean" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-5"))))
+  (check "negative number positional" "-5" (cdar (parsed-args r)))
+  (check "negative number is not an unknown option" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("-"))))
+  (check "lone dash positional" "-" (cdar (parsed-args r))))
+
+;; --- Top-level options after the command ---
+(display "=== Options after command ===") (newline)
+
+(let ((r (run-cli-parse app '("init" "-n" "5" "x"))))
+  (check "top-level option after command" 5 (parsed-ref r "count"))
+  (check "its value does not shift sub positionals" "x"
+    (cdar (parsed-args (parsed-sub r))))
+  (check "option after command is clean" '() (parsed-errors r)))
+
+(let ((r (run-cli-parse app '("init" "x" "-n" "5"))))
+  (check "top-level option after sub positional" 5 (parsed-ref r "count"))
+  (check "sub positional before option" "x" (cdar (parsed-args (parsed-sub r)))))
+
+(let ((r (run-cli-parse app '("init" "-v" "x"))))
+  (check "top-level flag after command" #t (parsed-flag? r "verbose")))
+
+(let ((r (run-cli-parse app '("init" "--count=7" "x"))))
+  (check "top-level --opt=value after command" 7 (parsed-ref r "count")))
+
+(let ((r (run-cli-parse app '("init" "-o" "out" "x"))))
+  (check "top-level string option after command" "out" (parsed-ref r "output"))
+  (check "string option value not taken as sub positional" "x"
+    (cdar (parsed-args (parsed-sub r)))))
+
+(let ((r (run-cli-parse app '("build" "-j" "8" "-n" "5"))))
+  (check "sub option and top-level option mixed: sub" 8
+    (parsed-ref (parsed-sub r) "jobs"))
+  (check "sub option and top-level option mixed: top" 5 (parsed-ref r "count")))
+
+;; the subcommand's own option wins after its token
+(define sapp
+  (cli "sapp" "Shadowed option"
+    (option "-j" "--jobs" "Top-level jobs" 1)
+    (command "build" "Build"
+      (option "-j" "--jobs" "Build jobs" 4))))
+
+(let ((r (run-cli-parse sapp '("build" "-j" "8"))))
+  (check "shadowed option goes to sub" 8 (parsed-ref (parsed-sub r) "jobs"))
+  (check "shadowed option leaves top default" 1 (parsed-ref r "jobs")))
+
+(let ((r (run-cli-parse sapp '("-j" "2" "build" "-j" "8"))))
+  (check "shadowed option before command is top" 2 (parsed-ref r "jobs"))
+  (check "shadowed option after command is sub" 8
+    (parsed-ref (parsed-sub r) "jobs")))
+
+;; --- run-cli error dispatch ---
+(display "=== run-cli errors ===") (newline)
+
+(let ((out (dispatch '("--bogus"))))
+  (check "usage error skips handlers" #f last-call)
+  (check "usage error reaches the error handler"
+    '("unknown option '--bogus'") last-errors)
+  (check "error handler suppresses default output" "" out))
+
+(begin
+  (dispatch '("build" "-j"))
+  (check "sub usage error skips the sub handler" #f last-call)
+  (check "sub usage error reaches the error handler"
+    '("option '-j' requires a value") last-errors))
+
+(begin
+  (dispatch '("inti" "proj"))
+  (check "extra positional skips the default handler" #f last-call)
+  (check "extra positional reaches the error handler"
+    '("unexpected argument 'proj'") last-errors))
+
+(let ((out (dispatch '("--bogus" "--help"))))
+  (check "--help beside an error prints help" #t
+    (string-contains? out "myapp — A test application"))
+  (check "--help beside an error is not an error" #f last-errors))
+
+(begin
+  (dispatch '("-n" "3" "f.txt"))
+  (check "clean argv still dispatches" 'default last-call)
+  (check "clean argv has no errors" #f last-errors))
+
+;; no #f handler and no command given: a usage error, not silent help
+(let ((cmd-only `(("init" . ,(lambda (r) (set! last-call 'init)))
+                  (error . ,(lambda (r) (set! last-errors (parsed-errors r)))))))
+  (set! last-call #f) (set! last-errors #f)
+  (capture-output (lambda () (run-cli app cmd-only '())))
+  (check "missing command is a usage error" '("missing command") last-errors)
+  (check "missing command runs no handler" #f last-call))
+
+;; a declared command with no handler entry is the app's bug: it raises
+(check "missing handler raises" 'raised
+  (guard (e (#t 'raised))
+    (capture-output
+      (lambda () (run-cli app `(("build" . ,(lambda (r) #f))) '("init" "x"))))
+    'returned))
+
+;; no commands and no #f handler: also the app's bug
+(check "no default handler raises" 'raised
+  (guard (e (#t 'raised))
+    (capture-output
+      (lambda () (run-cli iapp '() '("-i"))))
+    'returned))
 
 ;; --- Generated help output ---
 (display "=== Help Output ===") (newline)
