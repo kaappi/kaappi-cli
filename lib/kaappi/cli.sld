@@ -132,6 +132,20 @@
                       (loop '() opts (append (reverse rest) pos-args)
                             found-cmd cmd-argv errors bad-cmd))))
 
+                  ;; "-vn5" is several short options in one token; spell
+                  ;; it out and parse the pieces. After a command the
+                  ;; subcommand's options are consulted first, as below.
+                  ((cluster-token? arg)
+                   (let ((r (expand-cluster
+                              arg
+                              (if found-cmd
+                                  (append (filter option-spec? (cmd-specs found-cmd))
+                                          options)
+                                  options)
+                              errors)))
+                     (loop (append (car r) rest) opts pos-args found-cmd
+                           cmd-argv (cadr r) bad-cmd)))
+
                   ;; After the command token, tokens belong to the
                   ;; subcommand, except top-level options the subcommand
                   ;; does not define itself (its own option wins). A
@@ -293,6 +307,50 @@
     ;; negative real number. "-v", "--help" and "--" are never values.
     (define (valid-value? tok)
       (or (not (option-shaped? tok)) (real-number-token? tok)))
+
+    ;; "-abc": a single dash, more than one character, not a number
+    (define (cluster-token? tok)
+      (and (> (string-length tok) 2)
+           (char=? (string-ref tok 0) #\-)
+           (not (char=? (string-ref tok 1) #\-))
+           (not (real-number-token? tok))))
+
+    ;; Spell out a cluster of short options as one token per option:
+    ;; flags may run together ("-vv"), and the first option that takes a
+    ;; value swallows the rest of the token, with or without "=" ("-n5",
+    ;; "-n=5", "-vn5"); with nothing left it takes the next argv token as
+    ;; usual. A value is emitted as "--long=value" so it is used verbatim.
+    ;; Returns (list tokens errors). A cluster whose first letter is not
+    ;; an option is reported whole, as the user most likely meant a
+    ;; single option ("-foo"); a later unknown letter is reported alone.
+    (define (expand-cluster tok options errors)
+      (let loop ((i 1) (acc '()) (errors errors))
+        (if (= i (string-length tok))
+            (list (reverse acc) errors)
+            (let* ((short (string #\- (string-ref tok i)))
+                   (o (find-opt-short options short))
+                   (more (substring tok (+ i 1) (string-length tok))))
+              (cond
+                ((and o (not (is-flag? o)))
+                 (list (reverse
+                         (cons (if (string=? more "")
+                                   short
+                                   (string-append
+                                     (opt-long o) "="
+                                     (if (char=? (string-ref more 0) #\=)
+                                         (substring more 1 (string-length more))
+                                         more)))
+                               acc))
+                       errors))
+                ((or o (string=? short "-h"))
+                 (loop (+ i 1) (cons short acc) errors))
+                ((= i 1)
+                 (list '() (cons (string-append "unknown option '" tok "'")
+                                 errors)))
+                (else
+                 (loop (+ i 1) acc
+                       (cons (string-append "unknown option '" short "'")
+                             errors))))))))
 
     ;; Does option o, written as tok, still need a value from the next token?
     (define (takes-value? o tok)

@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Short options may be clustered and values attached: `-vv`, `-vn 3`,
+  `-n3`, `-n=3`, `-vn3`. The first value-taking option in a cluster
+  swallows the rest of the token. A cluster whose first letter is not an
+  option is still reported as an unknown option
 - `parsed-errors` returns the usage errors recorded during a parse, as a
   list of strings (`'()` when clean); subcommand errors are included
 - An `(error . proc)` entry in the `run-cli` handlers alist takes over
@@ -37,9 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   values shifted the subcommand's positionals
 - `--` was silently dropped, so a dash-leading positional could never be
   passed; `-5` alone was dropped too
-- A multi-character dash token that matches no option (`-vn`, `-n5`) is
+- A multi-character dash token whose letters are not options (`-foo`) is
   reported as an unknown option; it used to be accepted as positional
-  data. Clustered and glued short options are tracked in #14
+  data
 - `--flag=value` (e.g. `--verbose=true`) no longer crashes the parser;
   the value part is ignored and the flag is set to `#t`
 - Option values no longer consume option-shaped tokens: `-n -v` now sets
