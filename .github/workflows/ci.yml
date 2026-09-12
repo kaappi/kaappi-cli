@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Chibi Scheme
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq chibi-scheme
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq chibi-scheme && chibi-scheme -V
 
       - name: Run tests under Chibi
         run: chibi-scheme -I lib tests/test-cli.scm
