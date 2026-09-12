@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-12
+
 ### Added
 - Short options may be clustered and values attached: `-vv`, `-vn 3`,
   `-n3`, `-n=3`, `-vn3`. The first value-taking option in a cluster
@@ -74,9 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Option values no longer consume option-shaped tokens: `-n -v` now sets
   the `verbose` flag instead of making `count` the string `"-v"`, and the
   same guard applies to `--help` and `--`. Negative numbers (`-5`) and a
-  lone `-` are still accepted as values. A missing value at end of argv
-  still keeps the option default (error reporting is tracked separately
-  in #4/#5)
+  lone `-` are still accepted as values
 - Documented numeric coercion in the README: a non-numeric value for a
   numeric option keeps the raw string (`--count=abc` → `"abc"`), and
   full Scheme number syntax is accepted (`1e3`, `1/2`, `#x10`)
