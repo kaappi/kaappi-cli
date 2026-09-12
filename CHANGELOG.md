@@ -47,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   page
 
 ### Fixed
+- `generate-help` with a subcommand name that is not declared raises
+  `generate-help: no such command` instead of printing the app's page
+  under the unknown name, as if the command existed
 - Unknown options (`--bogus`, `-z`) and, in a commands-only app, unknown
   commands are reported instead of silently dropped
 - Positionals beyond the declared ones are reported as unexpected
