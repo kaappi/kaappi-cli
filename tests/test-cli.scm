@@ -620,6 +620,115 @@
   "flag: -h and --help are reserved for the built-in help"
   (spec-error (lambda () (command "x" "X" (flag "-h" "--hard" "Hard")))))
 
+;; --- Spec validation ---
+(display "=== Spec validation ===") (newline)
+
+;; the issue's table: each used to crash later or corrupt keys
+(check "empty long name"
+  "flag: long name must be \"--\" followed by a name without \"=\""
+  (spec-error (lambda () (flag "-x" "" "X"))))
+
+(check "long name without --"
+  "option: long name must be \"--\" followed by a name without \"=\""
+  (spec-error (lambda () (option "-n" "count" "N" 10))))
+
+(check "long name with only --"
+  "flag: long name must be \"--\" followed by a name without \"=\""
+  (spec-error (lambda () (flag "-x" "--" "X"))))
+
+(check "long name containing ="
+  "option: long name must be \"--\" followed by a name without \"=\""
+  (spec-error (lambda () (option "-n" "--count=5" "N"))))
+
+(check "short name without -"
+  "flag: short name must be \"-\" followed by one character"
+  (spec-error (lambda () (flag "v" "--verbose" "V"))))
+
+(check "short name too long"
+  "flag: short name must be \"-\" followed by one character"
+  (spec-error (lambda () (flag "-vv" "--verbose" "V"))))
+
+(check "short name that is a long name"
+  "option: short name must be \"-\" followed by one character"
+  (spec-error (lambda () (option "--n" "--count" "N"))))
+
+(check "non-string short name"
+  "flag: short name must be a string"
+  (spec-error (lambda () (flag 'v "--verbose" "V"))))
+
+(check "non-string description"
+  "flag: description must be a string"
+  (spec-error (lambda () (flag "-v" "--verbose" 'verbose))))
+
+(check "non-string command name"
+  "command: command name must be a string"
+  (spec-error (lambda () (command 42 "Answer"))))
+
+(check "empty command name"
+  "command: command name must not be empty"
+  (spec-error (lambda () (command "" "Empty"))))
+
+(check "command name that looks like an option"
+  "command: command name must not start with \"-\""
+  (spec-error (lambda () (command "-init" "Init"))))
+
+(check "empty argument name"
+  "argument: argument name must not be empty"
+  (spec-error (lambda () (argument "" "Nothing"))))
+
+(check "non-string app name"
+  "cli: app name must be a string"
+  (spec-error (lambda () (cli 'myapp "App"))))
+
+(check "duplicate long option name"
+  "cli: duplicate long option name"
+  (spec-error (lambda () (cli "t" "T" (option "-a" "--count" "A" 1)
+                                      (option "-b" "--count" "B" 2)))))
+
+(check "duplicate short option name"
+  "cli: duplicate short option name"
+  (spec-error (lambda () (cli "t" "T" (flag "-v" "--verbose" "V")
+                                      (flag "-v" "--version" "V")))))
+
+(check "duplicate argument name"
+  "cli: duplicate argument name"
+  (spec-error (lambda () (cli "t" "T" (argument "file" "A")
+                                      (argument "file" "B")))))
+
+(check "duplicate command name"
+  "cli: duplicate command name"
+  (spec-error (lambda () (cli "t" "T" (command "init" "A")
+                                      (command "init" "B")))))
+
+(check "duplicate inside a command"
+  "command: duplicate long option name"
+  (spec-error (lambda () (command "build" "B" (flag "-a" "--all" "A")
+                                              (flag "-b" "--all" "B")))))
+
+(check "stray non-spec in cli"
+  "cli: not a spec built by flag, option, argument or command"
+  (spec-error (lambda () (cli "t" "T" "oops"))))
+
+(check "stray non-spec in command"
+  "command: not a spec built by flag, option, argument or command"
+  (spec-error (lambda () (command "build" "B" '(bogus)))))
+
+;; still allowed
+(check "subcommand may reuse a top-level option name" #f
+  (spec-error (lambda () (cli "t" "T" (option "-j" "--jobs" "J" 1)
+                                      (command "build" "B"
+                                        (option "-j" "--jobs" "J" 4))))))
+
+(check "same argument name in two commands is fine" #f
+  (spec-error (lambda () (cli "t" "T" (command "a" "A" (argument "name" "N"))
+                                      (command "b" "B" (argument "name" "N"))))))
+
+(check "hyphenated long name is fine" #f
+  (spec-error (lambda () (flag "-d" "--dry-run" "Dry run"))))
+
+(check "option default of any type is fine" #f
+  (spec-error (lambda () (option "-l" "--level" "L" 'debug))))
+
 ;; --- Generated help output ---
 (display "=== Help Output ===") (newline)
 (generate-help app)

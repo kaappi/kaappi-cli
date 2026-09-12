@@ -15,34 +15,102 @@
     ;; Spec builders
     ;; =================================================================
 
+    ;; Every builder validates its arguments and raises with a message
+    ;; naming the builder, so a malformed spec fails where it is written
+    ;; rather than at the first invocation or halfway through a help page.
+
     ;; (flag "-v" "--verbose" "Enable verbose")
     (define (flag short long description)
-      (check-not-help 'flag short long)
+      (check-option-names 'flag short long)
+      (check-string 'flag "description" description)
       (list 'flag short long description))
 
     ;; (option "-n" "--count" "Number" 10) — default 10, type inferred
     ;; (option "-o" "--output" "File")     — default #f
     (define (option short long description . args)
-      (check-not-help 'option short long)
+      (check-option-names 'option short long)
+      (check-string 'option "description" description)
       (let ((default (if (pair? args) (car args) #f)))
         (list 'option short long description default)))
 
-    ;; -h and --help are handled by the parser and listed on every help
-    ;; page, so a spec cannot claim either name, in either slot.
-    (define (check-not-help who short long)
-      (when (or (member short '("-h" "--help"))
-                (member long '("-h" "--help")))
-        (error (string-append (symbol->string who)
-                              ": -h and --help are reserved for the built-in help")
-               short long)))
-
     ;; (argument "file" "Input file")
     (define (argument name description)
+      (check-name 'argument "argument name" name)
+      (check-string 'argument "description" description)
       (list 'argument name description))
 
     ;; (command "init" "Initialize" (argument "name" "Project name"))
     (define (command name description . specs)
+      (check-name 'command "command name" name)
+      (check-string 'command "description" description)
+      (check-specs 'command specs)
       (list 'command name description specs))
+
+    ;; Spec validation
+
+    (define (spec-error who message . irritants)
+      (apply error (string-append (symbol->string who) ": " message) irritants))
+
+    (define (check-string who what v)
+      (unless (string? v)
+        (spec-error who (string-append what " must be a string") v)))
+
+    ;; A bare name: non-empty, and not something the parser would read as
+    ;; an option
+    (define (check-name who what v)
+      (check-string who what v)
+      (when (= (string-length v) 0)
+        (spec-error who (string-append what " must not be empty")))
+      (when (char=? (string-ref v 0) #\-)
+        (spec-error who (string-append what " must not start with \"-\"") v)))
+
+    ;; -h and --help are the built-in help and cannot be claimed in either
+    ;; slot (checked first, as the more specific message). short is "-"
+    ;; plus one character; long is "--" plus at least one, with no "="
+    ;; since that is how a value is attached.
+    (define (check-option-names who short long)
+      (check-string who "short name" short)
+      (check-string who "long name" long)
+      (when (or (member short '("-h" "--help"))
+                (member long '("-h" "--help")))
+        (spec-error who "-h and --help are reserved for the built-in help"
+                    short long))
+      (unless (and (= (string-length short) 2)
+                   (char=? (string-ref short 0) #\-)
+                   (not (char=? (string-ref short 1) #\-)))
+        (spec-error who "short name must be \"-\" followed by one character" short))
+      (unless (and (> (string-length long) 2)
+                   (string=? (substring long 0 2) "--")
+                   (not (str-has? long #\=)))
+        (spec-error who "long name must be \"--\" followed by a name without \"=\"" long)))
+
+    ;; Every element must come from a builder, and names must be unique
+    ;; within one level: an option's short and long name, an argument's
+    ;; name, a command's name. A subcommand may reuse a top-level option
+    ;; name; that is what makes its own option win after its token.
+    (define (check-specs who specs)
+      (let loop ((ss specs) (shorts '()) (longs '()) (args '()) (cmds '()))
+        (unless (null? ss)
+          (let ((s (car ss)))
+            (unless (and (pair? s)
+                         (memq (car s) '(flag option argument command)))
+              (spec-error who "not a spec built by flag, option, argument or command" s))
+            (cond
+              ((option-spec? s)
+               (when (member (opt-short s) shorts)
+                 (spec-error who "duplicate short option name" (opt-short s)))
+               (when (member (opt-long s) longs)
+                 (spec-error who "duplicate long option name" (opt-long s)))
+               (loop (cdr ss) (cons (opt-short s) shorts) (cons (opt-long s) longs)
+                     args cmds))
+              ((eq? (spec-type s) 'argument)
+               (when (member (arg-name s) args)
+                 (spec-error who "duplicate argument name" (arg-name s)))
+               (loop (cdr ss) shorts longs (cons (arg-name s) args) cmds))
+              (else
+               (when (member (cmd-name s) cmds)
+                 (spec-error who "duplicate command name" (cmd-name s)))
+               (loop (cdr ss) shorts longs args (cons (cmd-name s) cmds))))))))
 
     ;; Spec accessors
     (define (spec-type s) (car s))
@@ -70,6 +138,9 @@
     ;; =================================================================
 
     (define (cli name description . specs)
+      (check-name 'cli "app name" name)
+      (check-string 'cli "description" description)
+      (check-specs 'cli specs)
       (list 'cli name description specs))
 
     (define (cli-name c) (cadr c))

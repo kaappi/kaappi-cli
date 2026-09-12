@@ -20,6 +20,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (`mytool build -n 5`); a subcommand option of the same name wins there
 
 ### Changed
+- `cli`, `command`, `flag`, `option`, and `argument` validate their
+  arguments and raise with a message naming the builder: names and
+  descriptions must be strings, a short name is `-` plus one character,
+  a long name is `--` plus a name without `=`, command and argument names
+  are non-empty and do not start with `-`, and option, argument, and
+  command names are unique within one level. A malformed spec used to
+  crash at the first invocation or halfway through a help page, or store
+  values under a mangled key; a duplicate long name cross-wired the two
+  options
 - `flag` and `option` raise an error when given the reserved name `-h`
   or `--help`. Declaring `--help` used to store the value under the
   `"help"` key that dispatch checks, so every invocation printed help

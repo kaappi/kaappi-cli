@@ -66,6 +66,14 @@ Arguments:
 (command name description spec ...)      ; subcommand with its own specs
 ```
 
+Every builder validates its arguments when the spec is built and raises
+an error naming the builder and the offending value: a short name must be
+`-` plus one character, a long name `--` plus a name without `=`, and
+names and descriptions must be strings. `cli` and `command` also reject a
+duplicate option, argument, or command name within their own level. A
+subcommand may reuse a top-level option name; see
+[Option Placement](#option-placement).
+
 ### Parsing
 
 ```scheme
