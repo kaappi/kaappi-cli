@@ -17,13 +17,23 @@
 
     ;; (flag "-v" "--verbose" "Enable verbose")
     (define (flag short long description)
+      (check-not-help 'flag short long)
       (list 'flag short long description))
 
     ;; (option "-n" "--count" "Number" 10) — default 10, type inferred
     ;; (option "-o" "--output" "File")     — default #f
     (define (option short long description . args)
+      (check-not-help 'option short long)
       (let ((default (if (pair? args) (car args) #f)))
         (list 'option short long description default)))
+
+    ;; -h and --help are handled by the parser and listed on every help
+    ;; page, so a spec cannot claim either name.
+    (define (check-not-help who short long)
+      (when (or (equal? short "-h") (equal? long "--help"))
+        (error (string-append (symbol->string who)
+                              ": -h and --help are reserved for the built-in help")
+               short long)))
 
     ;; (argument "file" "Input file")
     (define (argument name description)
@@ -425,15 +435,15 @@
 
         (display "Usage: ") (display name)
         (when sub-name (display " ") (display sub-name))
-        (unless (null? opts) (display " [options]"))
+        (display " [options]")
         (unless (null? cmds) (display " <command>"))
         (for-each (lambda (a) (display " <") (display (arg-name a)) (display ">"))
                   positionals)
         (newline)
 
-        (unless (null? opts)
-          (newline) (display "Options:") (newline)
-          (for-each
+        ;; -h/--help is accepted on every page, so the section always shows
+        (newline) (display "Options:") (newline)
+        (for-each
             (lambda (o)
               (display "  ") (display (opt-short o))
               (display ", ") (display (opt-long o))
@@ -447,9 +457,9 @@
                 (display " (default: ") (display (opt-default o)) (display ")"))
               (newline))
             opts)
-          (display "  -h, --help")
-          (display (pad 12 28))
-          (display "Show this help") (newline))
+        (display "  -h, --help")
+        (display (pad 12 28))
+        (display "Show this help") (newline)
 
         (unless (null? positionals)
           (newline) (display "Arguments:") (newline)
