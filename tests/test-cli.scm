@@ -765,6 +765,23 @@
 (check "option default of any type is fine" #f
   (spec-error (lambda () (option "-l" "--level" "L" 'debug))))
 
+;; --- Help for an undeclared subcommand ---
+(display "=== Help for unknown command ===") (newline)
+
+(check "generate-help with an unknown command raises"
+  "generate-help: no such command"
+  (guard (e ((error-object? e) (error-object-message e)))
+    (capture-output (lambda () (generate-help app "nope")))
+    'returned))  ; reached only if generate-help returns normally: must fail
+
+(check "generate-help with an unknown command prints nothing first" ""
+  (capture-output
+    (lambda () (guard (e ((error-object? e) #f)) (generate-help app "nope")))))
+
+(let ((out (capture-output (lambda () (generate-help app "build")))))
+  (check "generate-help with a declared command still works" #t
+    (string-contains? out "myapp build — Build the project")))
+
 ;; --- Generated help output ---
 (display "=== Help Output ===") (newline)
 (generate-help app)

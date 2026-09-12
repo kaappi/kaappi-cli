@@ -510,23 +510,21 @@
     ;; Help generation
     ;; =================================================================
 
+    ;; (generate-help app)         — the app's page
+    ;; (generate-help app "build") — the page for a declared subcommand;
+    ;;                               an undeclared name is the caller's bug
     (define (generate-help app . args)
       (let* ((sub-name (if (pair? args) (car args) #f))
              (name (cli-name app))
-             (specs (if sub-name
-                        (let ((c (find-command
-                                   (filter (lambda (s) (eq? (spec-type s) 'command))
-                                           (cli-specs app))
-                                   sub-name)))
-                          (if c (cmd-specs c) (cli-specs app)))
-                        (cli-specs app)))
-             (desc (if sub-name
-                       (let ((c (find-command
-                                  (filter (lambda (s) (eq? (spec-type s) 'command))
-                                          (cli-specs app))
-                                  sub-name)))
-                         (if c (cmd-desc c) (cli-desc app)))
-                       (cli-desc app)))
+             (sub (if sub-name
+                      (or (find-command
+                            (filter (lambda (s) (eq? (spec-type s) 'command))
+                                    (cli-specs app))
+                            sub-name)
+                          (error "generate-help: no such command" sub-name))
+                      #f))
+             (specs (if sub (cmd-specs sub) (cli-specs app)))
+             (desc (if sub (cmd-desc sub) (cli-desc app)))
              (opts (filter (lambda (s) (or (eq? (spec-type s) 'option)
                                            (eq? (spec-type s) 'flag))) specs))
              (positionals (filter (lambda (s) (eq? (spec-type s) 'argument)) specs))
